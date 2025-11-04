@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "STLINK",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "stlink",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/Debug/STM32H743XIH6.elf",
+            "runToEntryPoint": "main",
+            "device": "STM32H743XIH6",
+            "stlinkPath": "C:/ST/STM32CubeCLT_1.19.0/STLink-gdb-server/bin/ST-LINK_gdbserver.exe",
+            "serverArgs": ["-k"],
+            "preLaunchCommands": ["set charset UTF-8"],
+        }
+    ]
+}
