@@ -1,19 +1,4 @@
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+/// @file main.cpp
 #include "main.hpp"
 #include "gpio.h"
 #include "fmc.h"
@@ -21,15 +6,15 @@
 #include "stm32h7xx_hal_gpio.h"
 #include "led.hpp"
 #include "bsp_sdram.hpp"
+#include "test.hpp"
+#include <memory>
 
 
 void SystemClock_Config(void);
 static void MPU_Config(void);
 
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
+/// @brief  application entry point
+/// @retval int type 0 reprentes success
 int main(void) {
   MPU_Config();
   SCB_EnableICache();
@@ -44,12 +29,13 @@ int main(void) {
     Error_Handler();
   }
 
-  Led led_pc13(GPIOC, GPIO_PIN_13);
+  std::unique_ptr<Led> led_pc13 = std::make_unique<Led>();
 
   while (1)
   {
-    led_pc13.flash_irregular();
+    led_pc13->flash_irregular();
   }
+  return 0;
 }
 
 /**
