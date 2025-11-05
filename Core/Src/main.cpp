@@ -1,17 +1,18 @@
 /// @file main.cpp
-#include <memory>
 #include "main.hpp"
+#include <memory>
+#include <stdio.h>
 #include "gpio.h"
 #include "fmc.h"
-#include "stm32h743xx.h"
-#include "stm32h7xx_hal_gpio.h"
-#include "led.hpp"
+#include "usart.h"
+#include "inttypes.h" // for HAL_RCC_GetSysClockFreq print, UNSIGNED LONG
+
 #include "bsp_sdram.hpp"
 #include "test.hpp"
-#include "usart.h"
+#include "led.hpp"
 
 
-void SystemClock_Config(void);
+extern "C" void SystemClock_Config(void);
 static void MPU_Config(void);
 
 /// @brief  application entry point
@@ -25,11 +26,14 @@ int main(void) {
 
   MX_GPIO_Init();
   MX_FMC_Init();
+  bsp::sdram::init_sequence(&hsdram1); // wakeup sdram
   MX_USART1_UART_Init();
-  // 执行 SDRAM 初始化命令序列
-  if (bsp::sdram::init_sequence(&hsdram1) != HAL_OK) {
-    Error_Handler();
-  }
+
+  /// test usart printf
+  printf("\n\n--- System Initialized ---\n");
+  printf("SYSCLK is running at %" PRIu32 " Hz\n", HAL_RCC_GetSysClockFreq());
+  printf("HCLK is running at %" PRIu32 " Hz\n", HAL_RCC_GetHCLKFreq());
+  printf("SDRAM heap is ready.\n");
 
   std::unique_ptr<Led> led_pc13 = std::make_unique<Led>();
 
@@ -39,6 +43,8 @@ int main(void) {
   }
   return 0;
 }
+
+extern "C" {
 
 /**
   * @brief System Clock Configuration
@@ -96,6 +102,37 @@ void SystemClock_Config(void) {
   }
 }
 
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void) {
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+  }
+  /* USER CODE END Error_Handler_Debug */
+}
+#ifdef USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line) {
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
+
+}
+
 void MPU_Config(void) {
   MPU_Region_InitTypeDef MPU_InitStruct = {0};
 
@@ -125,32 +162,3 @@ void MPU_Config(void) {
   HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
 
 }
-
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void) {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
-}
-#ifdef USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line) {
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
-}
-#endif /* USE_FULL_ASSERT */

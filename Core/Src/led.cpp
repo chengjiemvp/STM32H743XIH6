@@ -1,6 +1,4 @@
 #include "led.hpp"
-#include "stm32h7xx_hal.h"
-#include "stm32h7xx_hal_gpio.h"
 
 Led::Led(GPIO_TypeDef* led_port, uint16_t pin) : port_(led_port), pin_(pin) {}
 

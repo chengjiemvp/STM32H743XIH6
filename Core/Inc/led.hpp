@@ -1,7 +1,7 @@
 #pragma once
+#include "main.hpp"
 #include <cstdint>
-#include "stm32h7xx_hal.h"
-#include "gpio.h"
+
 
 class Led {
     public:

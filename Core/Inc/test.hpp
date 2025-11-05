@@ -1,9 +1,9 @@
 #pragma once
-#include <cstdint>
 #include "main.hpp"
+#include <cstdint>
 
 namespace test {
-    
+
     /// @brief  test sdram
     /// @param  void
     /// @return int 0: success

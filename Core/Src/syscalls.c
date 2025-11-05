@@ -30,6 +30,9 @@
 #include <sys/time.h>
 #include <sys/times.h>
 
+#include "main.h"
+#include "usart.h"
+
 
 /* Variables */
 extern int __io_putchar(int ch) __attribute__((weak));
@@ -77,16 +80,21 @@ __attribute__((weak)) int _read(int file, char *ptr, int len)
   return len;
 }
 
-__attribute__((weak)) int _write(int file, char *ptr, int len)
-{
-  (void)file;
-  int DataIdx;
-
-  for (DataIdx = 0; DataIdx < len; DataIdx++)
+/// @brief  Writes data to a file descriptor (stdout/stderr) via UART.
+int _write(int file, char *ptr, int len) {
+  // stdout (1) and stderr (2)
+  if (file == 1 || file == 2)
   {
-    __io_putchar(*ptr++);
+    // Ensure huart1 is initialized and ready before transmitting
+    // The third argument is the timeout. HAL_MAX_DELAY means it will block until finished.
+    if (HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY) == HAL_OK)
+    {
+      return len; // Return the number of characters written
+    }
   }
-  return len;
+  // For other file descriptors, return an error
+  errno = EBADF;
+  return -1;
 }
 
 int _close(int file)

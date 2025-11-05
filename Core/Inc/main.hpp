@@ -1,11 +1,11 @@
 #pragma once
-#include "stm32h7xx_hal.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-    void Error_Handler(void);
+// 包含 C 世界的所有声明
+#include "main.h"
 
 #ifdef __cplusplus
 }
