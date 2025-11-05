@@ -49,38 +49,19 @@ void MX_FMC_Init(void)
   hsdram1.Init.RowBitsNumber = FMC_SDRAM_ROW_BITS_NUM_13;
   hsdram1.Init.MemoryDataWidth = FMC_SDRAM_MEM_BUS_WIDTH_16;
   hsdram1.Init.InternalBankNumber = FMC_SDRAM_INTERN_BANKS_NUM_4;
-  
-  // --- 修改点 1: 将 CAS 延迟从 3 改为 2 ---
-  hsdram1.Init.CASLatency = FMC_SDRAM_CAS_LATENCY_2;
-
+  hsdram1.Init.CASLatency = FMC_SDRAM_CAS_LATENCY_3;
   hsdram1.Init.WriteProtection = FMC_SDRAM_WRITE_PROTECTION_DISABLE;
-  
-  // --- 修改点 2: 将时钟分频从 3 改为 2，得到 120MHz SDCLK ---
-  //    (或者保持 3，得到 80MHz SDCLK，但 CL2 对 80MHz 更适合)
-  //    我们先尝试保持 80MHz，因为更慢更稳定。
-  hsdram1.Init.SDClockPeriod = FMC_SDRAM_CLOCK_PERIOD_3;
-
+  hsdram1.Init.SDClockPeriod = FMC_SDRAM_CLOCK_PERIOD_2;
   hsdram1.Init.ReadBurst = FMC_SDRAM_RBURST_ENABLE;
-
-  // --- 修改点 3: 将读管道延迟从 1 改为 0 ---
-  hsdram1.Init.ReadPipeDelay = FMC_SDRAM_RPIPE_DELAY_0;
-
+  hsdram1.Init.ReadPipeDelay = FMC_SDRAM_RPIPE_DELAY_1;
   /* SdramTiming */
-  // 以下参数基于一个 80MHz (12.5ns) 的时钟周期，并留有余量
-  // tMRD: 2 cycles
   SdramTiming.LoadToActiveDelay = 2;
-  // tXSR: 70ns -> 70/12.5 = 5.6 -> 6 cycles
-  SdramTiming.ExitSelfRefreshDelay = 6;
-  // tRAS: 42ns -> 42/12.5 = 3.36 -> 4 cycles
-  SdramTiming.SelfRefreshTime = 4;
-  // tRC: 60ns -> 60/12.5 = 4.8 -> 5 cycles
-  SdramTiming.RowCycleDelay = 5;
-  // --- 修改点 4: 将 tWR 从 16 改为 2 ---
-  SdramTiming.WriteRecoveryTime = 2;
-  // tRP: 18ns -> 18/12.5 = 1.44 -> 2 cycles
-  SdramTiming.RPDelay = 2;
-  // tRCD: 18ns -> 18/12.5 = 1.44 -> 2 cycles
-  SdramTiming.RCDDelay = 2;
+  SdramTiming.ExitSelfRefreshDelay = 9;
+  SdramTiming.SelfRefreshTime = 6;
+  SdramTiming.RowCycleDelay = 8;
+  SdramTiming.WriteRecoveryTime = 3;
+  SdramTiming.RPDelay = 3;
+  SdramTiming.RCDDelay = 3;
 
   if (HAL_SDRAM_Init(&hsdram1, &SdramTiming) != HAL_OK)
   {
@@ -88,54 +69,7 @@ void MX_FMC_Init(void)
   }
 
   /* USER CODE BEGIN FMC_Init 2 */
-  // 关键步骤：手动发送初始化命令序列
-  // HAL_SDRAM_Init 内部不会发送这些命令，需要我们自己来！
-  FMC_SDRAM_CommandTypeDef command;
-
-  // 步骤 1: Clock Configuration Enable
-  command.CommandMode = FMC_SDRAM_CMD_CLK_ENABLE;
-  command.CommandTarget = FMC_SDRAM_CMD_TARGET_BANK1;
-  command.AutoRefreshNumber = 1;
-  command.ModeRegisterDefinition = 0;
-  HAL_SDRAM_SendCommand(&hsdram1, &command, 0x1000);
-  HAL_Delay(1); // 至少等待 100us
-
-  // 步骤 2: PALL (Precharge All)
-  command.CommandMode = FMC_SDRAM_CMD_PALL;
-  command.CommandTarget = FMC_SDRAM_CMD_TARGET_BANK1;
-  command.AutoRefreshNumber = 1;
-  command.ModeRegisterDefinition = 0;
-  HAL_SDRAM_SendCommand(&hsdram1, &command, 0x1000);
-
-  // 步骤 3: Auto-Refresh
-  command.CommandMode = FMC_SDRAM_CMD_AUTOREFRESH_MODE;
-  command.CommandTarget = FMC_SDRAM_CMD_TARGET_BANK1;
-  command.AutoRefreshNumber = 8; // 至少 2 次，8 次更稳定
-  command.ModeRegisterDefinition = 0;
-  HAL_SDRAM_SendCommand(&hsdram1, &command, 0x1000);
-
-  // 步骤 4: Load Mode Register
-  // 计算模式寄存器的值:
-  // Burst Length: 1 (000)
-  // Burst Type: Sequential (0)
-  // CAS Latency: 2 (010)
-  // Standard Mode (0)
-  // Write Burst Mode: 1 (Single Location Access)
-  // -> 0b0000 0001 0010 0000 -> 0x0120
-  // 如果 CAS Latency 是 3, 则是 0x0130
-  // 我们使用 CL2
-  uint32_t mode_reg = 0x220;
-
-  command.CommandMode = FMC_SDRAM_CMD_LOAD_MODE;
-  command.CommandTarget = FMC_SDRAM_CMD_TARGET_BANK1;
-  command.AutoRefreshNumber = 1;
-  command.ModeRegisterDefinition = mode_reg;
-  HAL_SDRAM_SendCommand(&hsdram1, &command, 0x1000);
-
-  // 步骤 5: 设置刷新率计数器
-  // Refresh_Counter = (Refresh_Period / Number_Of_Rows) / SDRAM_Clock_Period
-  // (64ms / 8192) / 12.5ns = 7.8125us / 12.5ns = 625
-  HAL_SDRAM_ProgramRefreshRate(&hsdram1, 625);
+  
   /* USER CODE END FMC_Init 2 */
 }
 
