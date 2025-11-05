@@ -1,4 +1,5 @@
 /// @file main.cpp
+#include <memory>
 #include "main.hpp"
 #include "gpio.h"
 #include "fmc.h"
@@ -7,7 +8,7 @@
 #include "led.hpp"
 #include "bsp_sdram.hpp"
 #include "test.hpp"
-#include <memory>
+#include "usart.h"
 
 
 void SystemClock_Config(void);
@@ -24,6 +25,7 @@ int main(void) {
 
   MX_GPIO_Init();
   MX_FMC_Init();
+  MX_USART1_UART_Init();
   // 执行 SDRAM 初始化命令序列
   if (bsp::sdram::init_sequence(&hsdram1) != HAL_OK) {
     Error_Handler();
