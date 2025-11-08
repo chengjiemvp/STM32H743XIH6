@@ -31,6 +31,7 @@
 #include <sys/times.h>
 
 #include "main.h"
+#include "stm32h7xx_hal_def.h"
 #include "usart.h"
 
 
@@ -83,12 +84,10 @@ __attribute__((weak)) int _read(int file, char *ptr, int len)
 /// @brief  Writes data to a file descriptor (stdout/stderr) via UART.
 int _write(int file, char *ptr, int len) {
   // stdout (1) and stderr (2)
-  if (file == 1 || file == 2)
-  {
+  if (file == 1 || file == 2) {
     // Ensure huart1 is initialized and ready before transmitting
     // The third argument is the timeout. HAL_MAX_DELAY means it will block until finished.
-    if (HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY) == HAL_OK)
-    {
+    if (HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY) == HAL_OK) {
       return len; // Return the number of characters written
     }
   }

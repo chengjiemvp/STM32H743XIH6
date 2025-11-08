@@ -13,4 +13,7 @@ namespace test {
     /// @brief run sdram test and flash led if success
     /// @note  this function will test all 32mb sdram space
     void run_sdram_test(void);
+
+    /// @brief test uart by printf
+    void run_uart_test(void);
 }
