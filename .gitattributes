@@ -1,0 +1,5 @@
+# use LF
+* text=auto eol=lf
+
+# .bal file must use CRLF
+*.bat text eol=crlf
