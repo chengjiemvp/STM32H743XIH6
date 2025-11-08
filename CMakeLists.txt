@@ -46,7 +46,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/led.cpp
     Core/Src/bsp_sdram.cpp
     Core/Src/test.cpp
-    Core/Src/Uart.cpp
+    Core/Src/uart.cpp
+    Core/Src/system_setup.cpp
+    Core/Src/app_callbacks.cpp
 )
 
 # Add include paths

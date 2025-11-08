@@ -1,4 +1,4 @@
-#include "Uart.hpp"
+#include "uart.hpp"
 
 /// @brief initialize static instance pointer
 Uart* Uart::instance_ = nullptr;

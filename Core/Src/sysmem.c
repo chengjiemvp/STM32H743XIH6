@@ -28,7 +28,10 @@
 /**
  * Pointer to the current high watermark of the heap usage
  */
-// static uint8_t *__sbrk_heap_end = NULL;
+
+/* 1. 声明新的链接器符号 */
+extern char __heap_start__; /* Defined by the linker script */
+extern char __heap_end__;   /* Defined by the linker script */
 
 /**
  * @brief _sbrk() allocates memory to the newlib heap and is used by malloc
@@ -51,38 +54,18 @@
  * @param incr Memory size
  * @return Pointer to allocated memory
  */
-void *_sbrk(ptrdiff_t incr)
-{
-    // 1. 从链接器脚本中导入 SDRAM 堆的起始和结束地址
-    extern uint8_t __sdram_heap_start__; /* Symbol defined in the linker script */
-    extern uint8_t __sdram_heap_end__;   /* Symbol defined in the linker script */
+void *_sbrk(ptrdiff_t incr) {
+  static char *heap_ptr = &__heap_start__; // 当前堆的末尾指针
+  char *prev_heap_ptr = heap_ptr;
 
-    // 2. 定义一个静态变量，用于跟踪当前堆的“栈顶”
-    //    它只在第一次调用时被初始化为堆的起始地址
-    static uint8_t *heap_end = NULL;
-    uint8_t *prev_heap_end;
+  if (heap_ptr + incr > &__heap_end__) {
+    // Heap and stack collision
+    errno = ENOMEM;
+    return (void *)-1;
+  }
 
-    if (NULL == heap_end)
-    {
-        heap_end = &__sdram_heap_start__;
-    }
-
-    // 3. 记录当前的堆顶，作为本次分配内存的返回值
-    prev_heap_end = heap_end;
-
-    // 4. 检查是否有足够的剩余空间
-    if (heap_end + incr > &__sdram_heap_end__)
-    {
-        // 空间不足，返回错误
-        errno = ENOMEM;
-        return (void *)-1;
-    }
-
-    // 5. 空间足够，移动堆顶指针
-    heap_end += incr;
-
-    // 6. 返回本次分配的内存块的起始地址
-    return (void *)prev_heap_end;
+  heap_ptr += incr;
+  return (void *)prev_heap_ptr;
 }
 
 #if defined(__PICOLIBC__)

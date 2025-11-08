@@ -5,12 +5,17 @@
 
 class Led {
     public:
-        Led(GPIO_TypeDef* led_port = GPIOC, uint16_t pin = GPIO_PIN_13);
+        Led();
+        void flash_irregular(); // will not in use
+        void update();
+    private:
         void on();
         void off();
         void toggle();
-        void flash_irregular();
-    private:
+
+        bool is_on_;
+        uint32_t counter_;
+        uint32_t current_duration_; // ??
         GPIO_TypeDef* port_;
         uint16_t pin_;
 };

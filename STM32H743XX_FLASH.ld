@@ -241,14 +241,11 @@ SECTIONS
     . = ALIGN(8);
   } >DTCMRAM
 
-  /* <<<--- 3. 添加新的 SDRAM 堆区域 ---<<< */
-  .sdram_heap (NOLOAD) :
-  {
-    . = ALIGN(8);
-    __sdram_heap_start__ = .;
-    . = ORIGIN(SDRAM) + LENGTH(SDRAM); /* 使用整个 SDRAM 区域 */
-    __sdram_heap_end__ = .;
-  } >SDRAM
+  /* <<<--- 最终推荐的 SDRAM 堆区域 ---<<< */
+  /* This section will be used by _sbrk to allocate heap in SDRAM */
+  /* We just need to define symbols for the start and end of the heap */
+  __heap_start__ = ORIGIN(SDRAM);
+  __heap_end__ = ORIGIN(SDRAM) + LENGTH(SDRAM);
 
   /* Remove information from the standard libraries */
   /DISCARD/ :
