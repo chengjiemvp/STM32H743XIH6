@@ -15,6 +15,7 @@
 #include "system_setup.hpp"
 #include "ST7789.hpp"
 
+extern volatile bool spi_dma_busy;
 
 std::unique_ptr<Led> led_pc13_ptr; // only defined now, initialized in main()
 
@@ -44,14 +45,8 @@ int main(void) {
 
 
     ST7789 lcd(&hspi5, GPIOH, GPIO_PIN_5, GPIOJ, GPIO_PIN_11, GPIOH, GPIO_PIN_6 /* 没有 RST 就不传 */);
-    lcd.init_basic();
-    lcd.fill_screen(0x0000);  // 先清黑
-    printf("ST7789 init + clear done.\r\n");
 
-    uint32_t last_change = HAL_GetTick();
-    int color_index = 0;
-    const uint16_t colors[] = { 0xF800, 0x07E0, 0x001F }; // R,G,B
-    const uint32_t hold_ms = 800; // 每种颜色保持时间
+
 
     while (1) {
 
@@ -61,14 +56,6 @@ int main(void) {
                 printf("Received: %c (0x%02X)\r\n", (char)byte, byte);
             }
         } // deal with received data via uart
-
-        uint32_t now = HAL_GetTick();
-        if (now - last_change >= hold_ms) {
-            lcd.fill_screen(colors[color_index]);
-            printf("Screen color index %d\r\n", color_index);
-            color_index = (color_index + 1) % 3;
-            last_change = now;
-        }
 
     }
 }

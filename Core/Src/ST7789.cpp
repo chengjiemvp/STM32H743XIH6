@@ -1,8 +1,11 @@
 #include "ST7789.hpp"
-#include "stm32h7xx_hal.h"
+#include "main.hpp"
+#include <stdio.h>
 
 #define TFT_W 240
 #define TFT_H 280
+
+volatile bool spi_dma_busy = false;
 
 static inline void ensure_spi_enabled(SPI_HandleTypeDef* h) {
     if ((h->Instance->CR1 & SPI_CR1_SPE) == 0) {
@@ -85,9 +88,10 @@ void spi_dump_state(SPI_HandleTypeDef* h) {
 }
 
 void ST7789::fill_screen(uint16_t color) {
+    if (spi_dma_busy) return; // 上一次DMA未完成，直接返回或等待
+
     set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
 
-    // RAMWR
     ensure_spi_enabled(hspi_);
     HAL_GPIO_WritePin(cs_port_, cs_pin_, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(dc_port_, dc_pin_, GPIO_PIN_RESET);
@@ -95,18 +99,25 @@ void ST7789::fill_screen(uint16_t color) {
     HAL_SPI_Transmit(hspi_, &cmd, 1, 50);
     HAL_GPIO_WritePin(dc_port_, dc_pin_, GPIO_PIN_SET);
 
-    // 一行缓冲（栈大小可接受则保留；不够就改成更小块）
-    static uint8_t lineBuf[240 * 2];
+    static uint8_t* fullBuf = nullptr;
+    static size_t bufSize = TFT_W * TFT_H * 2;
+    if (!fullBuf) {
+        fullBuf = (uint8_t*)malloc(bufSize);
+    }
     uint8_t hi = (uint8_t)(color >> 8);
     uint8_t lo = (uint8_t)(color & 0xFF);
-    for (uint32_t i = 0; i < sizeof(lineBuf); i += 2) {
-        lineBuf[i] = hi;
-        lineBuf[i + 1] = lo;
+    for (size_t i = 0; i < bufSize; i += 2) {
+        fullBuf[i] = hi;
+        fullBuf[i + 1] = lo;
     }
-    for (uint16_t y = 0; y < TFT_H; ++y) {
-        HAL_SPI_Transmit(hspi_, lineBuf, sizeof(lineBuf), 1000);
+
+    spi_dma_busy = true;
+    HAL_StatusTypeDef ret = HAL_SPI_Transmit_DMA(hspi_, fullBuf, bufSize);
+    if (ret != HAL_OK) {
+        printf("SPI DMA TX fail, ret=%d\n", ret);
+        spi_dma_busy = false;
+        HAL_GPIO_WritePin(cs_port_, cs_pin_, GPIO_PIN_SET);
     }
-    HAL_GPIO_WritePin(cs_port_, cs_pin_, GPIO_PIN_SET);
 }
 
 void ST7789::draw_single_test_pixel() {
@@ -133,6 +144,7 @@ void ST7789::init_basic() {
 
     // 软件复位
     software_reset();
+    HAL_Delay(150);
 
     // Sleep Out
     write_cmd(0x11);
@@ -149,5 +161,97 @@ void ST7789::init_basic() {
     // Display ON
     write_cmd(0x29);
     HAL_Delay(20);
+
+    ///////////////////////////////////////////////////////
+    MX_SPI5_Init();               // 初始化SPI和控制引脚
+   
+    HAL_Delay(10);               	// 屏幕刚完成复位时（包括上电复位），需要等待至少5ms才能发送指令
+ 	LCD_WriteCommand(0x36);       // 显存访问控制 指令，用于设置访问显存的方式
+	LCD_WriteData_8bit(0x00);     // 配置成 从上到下、从左到右，RGB像素格式
+
+	LCD_WriteCommand(0x3A);			// 接口像素格式 指令，用于设置使用 12位、16位还是18位色
+	LCD_WriteData_8bit(0x05);     // 此处配置成 16位 像素格式
+
+    // 接下来很多都是电压设置指令，直接使用厂家给设定值
+ 	LCD_WriteCommand(0xB2);			
+	LCD_WriteData_8bit(0x0C);
+	LCD_WriteData_8bit(0x0C); 
+	LCD_WriteData_8bit(0x00); 
+	LCD_WriteData_8bit(0x33); 
+	LCD_WriteData_8bit(0x33); 			
+
+	LCD_WriteCommand(0xB7);		   // 栅极电压设置指令	
+	LCD_WriteData_8bit(0x35);     // VGH = 13.26V，VGL = -10.43V
+
+	LCD_WriteCommand(0xBB);			// 公共电压设置指令
+	LCD_WriteData_8bit(0x19);     // VCOM = 1.35V
+
+	LCD_WriteCommand(0xC0);
+	LCD_WriteData_8bit(0x2C);
+
+	LCD_WriteCommand(0xC2);       // VDV 和 VRH 来源设置
+	LCD_WriteData_8bit(0x01);     // VDV 和 VRH 由用户自由配置
+
+	LCD_WriteCommand(0xC3);			// VRH电压 设置指令  
+	LCD_WriteData_8bit(0x12);     // VRH电压 = 4.6+( vcom+vcom offset+vdv)
+				
+	LCD_WriteCommand(0xC4);		   // VDV电压 设置指令	
+	LCD_WriteData_8bit(0x20);     // VDV电压 = 0v
+
+	LCD_WriteCommand(0xC6); 		// 正常模式的帧率控制指令
+	LCD_WriteData_8bit(0x0F);   	// 设置屏幕控制器的刷新帧率为60帧    
+
+	LCD_WriteCommand(0xD0);			// 电源控制指令
+	LCD_WriteData_8bit(0xA4);     // 无效数据，固定写入0xA4
+	LCD_WriteData_8bit(0xA1);     // AVDD = 6.8V ，AVDD = -4.8V ，VDS = 2.3V
+
+	LCD_WriteCommand(0xE0);       // 正极电压伽马值设定
+	LCD_WriteData_8bit(0xD0);
+	LCD_WriteData_8bit(0x04);
+	LCD_WriteData_8bit(0x0D);
+	LCD_WriteData_8bit(0x11);
+	LCD_WriteData_8bit(0x13);
+	LCD_WriteData_8bit(0x2B);
+	LCD_WriteData_8bit(0x3F);
+	LCD_WriteData_8bit(0x54);
+	LCD_WriteData_8bit(0x4C);
+	LCD_WriteData_8bit(0x18);
+	LCD_WriteData_8bit(0x0D);
+	LCD_WriteData_8bit(0x0B);
+	LCD_WriteData_8bit(0x1F);
+	LCD_WriteData_8bit(0x23);
+
+	LCD_WriteCommand(0xE1);      // 负极电压伽马值设定
+	LCD_WriteData_8bit(0xD0);
+	LCD_WriteData_8bit(0x04);
+	LCD_WriteData_8bit(0x0C);
+	LCD_WriteData_8bit(0x11);
+	LCD_WriteData_8bit(0x13);
+	LCD_WriteData_8bit(0x2C);
+	LCD_WriteData_8bit(0x3F);
+	LCD_WriteData_8bit(0x44);
+	LCD_WriteData_8bit(0x51);
+	LCD_WriteData_8bit(0x2F);
+	LCD_WriteData_8bit(0x1F);
+	LCD_WriteData_8bit(0x1F);
+	LCD_WriteData_8bit(0x20);
+	LCD_WriteData_8bit(0x23);
+	LCD_WriteCommand(0x21);       // 打开反显，因为面板是常黑型，操作需要反过来
+
+    // 退出休眠指令，LCD控制器在刚上电、复位时，会自动进入休眠模式 ，因此操作屏幕之前，需要退出休眠  
+	LCD_WriteCommand(0x11);       // 退出休眠 指令
+    HAL_Delay(120);               // 需要等待120ms，让电源电压和时钟电路稳定下来
+
+    // 打开显示指令，LCD控制器在刚上电、复位时，会自动关闭显示 
+	LCD_WriteCommand(0x29);       // 打开显示   	
+	
+    // 以下进行一些驱动的默认设置
+    LCD_SetDirection(Direction_V);  	      //	设置显示方向
+	LCD_SetBackColor(LCD_BLACK);           // 设置背景色
+ 	LCD_SetColor(LCD_WHITE);               // 设置画笔色  
+	LCD_Clear();                           // 清屏
+
+    LCD_SetAsciiFont(&ASCII_Font24);       // 设置默认字体
+    LCD_ShowNumMode(Fill_Zero);	      	// 设置变量显示模式，多余位填充空格还是填充0
 }
 
