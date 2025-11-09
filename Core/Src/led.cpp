@@ -20,24 +20,8 @@ void Led::toggle() {
     is_on_ = !is_on_;
 }
 
-void Led::flash_irregular() {
-    this->on();
-    HAL_Delay(500);
-    this->off();
-    HAL_Delay(500);
-    this->on();
-    HAL_Delay(100);
-    this->off();
-    HAL_Delay(100);
-    this->on();
-    HAL_Delay(100);
-    this->off();
-    HAL_Delay(100);
-    this->on();
-}
-
 // 状态机的核心：每毫秒被调用一次
-void Led::update() {
+void Led::flash_irregular() {
     // 计时器减一
     if (counter_ > 0) {
         counter_--;
@@ -54,7 +38,7 @@ void Led::update() {
             current_duration_ = (rand() % 100) + 50;
         } else {
             // 如果现在是灭灯状态，设置一个较长的灭灯时间 (400-900ms)
-            current_duration_ = (rand() % 500) + 400;
+            current_duration_ = (rand() % 500) + 700;
         }
         
         // 重置计数器

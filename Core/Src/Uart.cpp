@@ -3,7 +3,8 @@
 /// @brief initialize static instance pointer
 Uart* Uart::instance_ = nullptr;
 
-Uart::Uart(UART_HandleTypeDef* huart) : huart_(huart), rx_buffer_(), rx_data_(0) {}
+Uart::Uart(UART_HandleTypeDef* huart) : tick_count_(0), huart_(huart), 
+    rx_buffer_(), rx_data_(0)  {}
 
 /// @brief start UART receive interrupt
 void Uart::begin() {
@@ -30,3 +31,4 @@ void Uart::isr_handler() {
     rx_buffer_.push(rx_data_);
     HAL_UART_Receive_IT(huart_, &rx_data_, 1);
 }
+

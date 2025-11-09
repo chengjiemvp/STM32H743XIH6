@@ -7,7 +7,7 @@ class Led {
     public:
         Led();
         void flash_irregular(); // will not in use
-        void update();
+
     private:
         void on();
         void off();

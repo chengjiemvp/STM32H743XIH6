@@ -9,20 +9,20 @@ constexpr size_t UART_RX_BUFFER_SIZE {128};
 
 class Uart {
     public:
-        // get singleton instance
+        uint8_t tick_count_;
+
         static Uart& get_instance() {
             while (instance_ == nullptr) {
             }
             return *instance_;
-        }
+        } // get singleton instance
 
-        // initialize singleton instance
         static void init(UART_HandleTypeDef* huart) {
             if (instance_ == nullptr) {
                 // create instance via new
                 instance_ = new Uart(huart);
             }
-        }
+        } // initialize singleton instance
 
         // start UART receive interrupt
         void begin();

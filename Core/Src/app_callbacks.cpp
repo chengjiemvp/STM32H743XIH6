@@ -24,13 +24,19 @@ extern "C" {
 
         if (htim->Instance == TIM6) {
             // 在这里执行您的周期性任务
-            uint32_t current_time = HAL_GetTick();
-            printf("[STATUS] System is running. Uptime: %lu ms\r\n", (unsigned long)current_time);
+            if (Uart::get_instance().tick_count_ == 4) {
+                uint32_t current_time = HAL_GetTick();
+                printf("[STATUS] System is running. Uptime: %lu ms\r\n", (unsigned long)current_time);
+                Uart::get_instance().tick_count_ = 0;
+            }
+            else {
+                Uart::get_instance().tick_count_++;
+            }
         } // TIM6 for serial status
 
         if (htim->Instance == TIM7) {
             if (led_pc13_ptr) {
-                led_pc13_ptr->update();
+                led_pc13_ptr->flash_irregular();
             }
         } // TIM7 for led update
     }
