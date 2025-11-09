@@ -49,6 +49,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/uart.cpp
     Core/Src/system_setup.cpp
     Core/Src/app_callbacks.cpp
+    Core/Src/ST7789.cpp
 )
 
 # Add include paths

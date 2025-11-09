@@ -26,7 +26,7 @@ extern "C" {
             // 在这里执行您的周期性任务
             if (Uart::get_instance().tick_count_ == 4) {
                 uint32_t current_time = HAL_GetTick();
-                printf("[STATUS] System is running. Uptime: %lu ms\r\n", (unsigned long)current_time);
+                // printf("[STATUS] System is running. Uptime: %lu ms\r\n", (unsigned long)current_time);
                 Uart::get_instance().tick_count_ = 0;
             }
             else {
