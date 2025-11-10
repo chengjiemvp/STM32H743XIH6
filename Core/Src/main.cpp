@@ -15,7 +15,6 @@
 #include "system_setup.hpp"
 #include "ST7789.hpp"
 
-extern volatile bool spi_dma_busy;
 
 std::unique_ptr<Led> led_pc13_ptr; // only defined now, initialized in main()
 
@@ -44,7 +43,7 @@ int main(void) {
     HAL_TIM_Base_Start_IT(&htim7); // start TIM7 interrupt, led upate
 
 
-    ST7789 lcd(&hspi5, GPIOH, GPIO_PIN_5, GPIOJ, GPIO_PIN_11, GPIOH, GPIO_PIN_6 /* 没有 RST 就不传 */);
+    ST7789 lcd(&hspi5);
 
 
 
