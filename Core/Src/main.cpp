@@ -42,10 +42,11 @@ int main(void) {
     HAL_TIM_Base_Start_IT(&htim6); // start TIM6 interrupt, serial status
     HAL_TIM_Base_Start_IT(&htim7); // start TIM7 interrupt, led upate
 
-
-    ST7789 lcd(&hspi5);
-
-
+    // 初始化 LCD (DC: PJ11, BL: PH6)
+    ST7789 lcd(&hspi5, GPIOJ, GPIO_PIN_11, GPIOH, GPIO_PIN_6);
+    lcd.init_basic();
+    lcd.display_test_colors();
+    printf("ST7789 test done.\r\n");
 
     while (1) {
 
