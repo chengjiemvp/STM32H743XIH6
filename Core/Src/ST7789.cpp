@@ -482,16 +482,8 @@ void ST7789::color_cycle_loop() {
         
         frame_count++;
         
-        // 处理UART数据（回显接收到的字符）
-        while (Uart::get_instance().available() > 0) {
-            int byte = Uart::get_instance().read();
-            if (byte != -1) {
-                printf("%c", (char)byte);
-            }
-        }
-        
         // 每5秒打印一次FPS统计
-        if (frame_end - last_fps_print >= 5000) {
+        if (frame_end - last_fps_print >= 20000) {
             uint32_t elapsed = frame_end - last_fps_print;
             uint32_t fps_x10 = (frame_count * 10000) / elapsed;  // FPS * 10
             printf("[FPS] %lu.%lu fps, frame_time=%lums, frames=%lu, hue=%lu.%lu\r\n", 

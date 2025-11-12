@@ -1,5 +1,4 @@
-#pragma once
-
+#pragma  once
 #include "main.hpp"
 #include "RingBuffer.hpp"
 #include <cstddef>
@@ -7,6 +6,9 @@
 
 // define serial buffer size
 constexpr size_t UART_RX_BUFFER_SIZE {128};
+using UartRxCallback = void (*)(uint8_t byte);
+
+void uart_rx_callback(uint8_t byte); // forward declaraion
 
 class Uart {
     public:
@@ -53,6 +55,9 @@ class Uart {
         // UART interrupt service routine handler
         void isr_handler();
 
+        // set receive callback
+        void set_rx_callback(UartRxCallback callback);
+
     private:
         // constructor is made private to prevent direct instance creation from outside
         Uart(UART_HandleTypeDef* huart);
@@ -68,4 +73,5 @@ class Uart {
         UART_HandleTypeDef* huart_;
         RingBuffer<uint8_t, UART_RX_BUFFER_SIZE> rx_buffer_;
         uint8_t rx_data_; // temporary storage for one byte data
+        UartRxCallback rx_callback_;
 };

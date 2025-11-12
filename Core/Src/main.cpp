@@ -56,6 +56,7 @@ int main(void) {
     // CRITICAL: Start ALL interrupts AFTER LCD initialization is complete
     // This prevents printf() in timer interrupts from interfering with SPI transfers
     
+    Uart::get_instance().set_rx_callback(uart_rx_callback); // register UART receive callback
     // Start all interrupts
     Uart::get_instance().begin();
     HAL_TIM_Base_Start_IT(&htim6);

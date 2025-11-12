@@ -8,10 +8,15 @@
 // 我们需要用 extern 来告诉编译器，这个变量在别处定义
 extern Led* led_pc13_ptr;
 
-extern "C" {
-    /// @brief  uart receive callback
-    /// @param  huart: uart handle pointer, UART_HandleTypeDef structure
-    /// @retval None
+///  @brief uart receive callback
+void uart_rx_callback(uint8_t byte) {
+    printf("%c", byte);
+} // user defined uart receive callback
+
+extern "C" { // system callback functions
+    ///  @brief  uart receive callback
+    ///  @param  huart: uart handle pointer, UART_HandleTypeDef structure
+    ///  @retval None
     void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
         if (huart->Instance == USART1) {
             // Safety check: only call if Uart is initialized
@@ -22,9 +27,9 @@ extern "C" {
         }
     }
 
-    /// @brief  TIM Period Elapsed callback in non-blocking mode
-    /// @param  htim TIM handle
-    /// @retval None
+    ///  @brief  TIM Period Elapsed callback in non-blocking mode
+    ///  @param  htim TIM handle
+    ///  @retval None
     void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
         if (htim->Instance == TIM6) {
@@ -37,4 +42,5 @@ extern "C" {
             }
         }
     }
+
 }

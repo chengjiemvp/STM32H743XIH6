@@ -7,7 +7,7 @@ bool Uart::initialized_ = false;
 unsigned char Uart::instance_storage_[256];
 
 Uart::Uart(UART_HandleTypeDef* huart) : tick_count_(0), huart_(huart), 
-    rx_buffer_(), rx_data_(0)  {}
+    rx_buffer_(), rx_data_(0), rx_callback_(nullptr)  {}
 
 /// @brief start UART receive interrupt
 void Uart::begin() {
@@ -31,5 +31,13 @@ int Uart::read() {
 /// @brief UART interrupt service routine handler
 void Uart::isr_handler() {
     rx_buffer_.push(rx_data_);
+    if (rx_callback_) {
+        rx_callback_(rx_data_);
+    } // if rx_callback_ is set, call it with received byte
     HAL_UART_Receive_IT(huart_, &rx_data_, 1);
+}
+
+/// @brief set receive callback
+void Uart::set_rx_callback(UartRxCallback callback) {
+    rx_callback_ = callback;
 }
