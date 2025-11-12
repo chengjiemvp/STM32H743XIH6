@@ -1,7 +1,9 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include "led.hpp"
 
-Led::Led() : is_on_(false), counter_(0), current_duration_(0) {
+Led::Led() : is_on_(false), counter_(0), current_duration_(0), 
+             brightness_(50), brightness_step_(1), pwm_counter_(0), pwm_period_(5) {
     off();
 }
 
@@ -18,6 +20,46 @@ void Led::off() {
 void Led::toggle() {
     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
     is_on_ = !is_on_;
+}
+
+void Led::set_brightness(uint8_t brightness) {
+    // Clamp brightness to 0-100 range
+    if (brightness > 100) {
+        brightness = 100;
+    }
+    brightness_ = brightness;
+}
+
+// Breathing light effect using software PWM
+// Called once per millisecond from HAL_TIM_PeriodElapsedCallback
+void Led::breathing() {
+    // Software PWM implementation
+    // pwm_period_ = 10ms, update brightness every 10ms
+    pwm_counter_++;
+    
+    if (pwm_counter_ >= pwm_period_) {
+        pwm_counter_ = 0;
+        
+        // Update brightness (0-100)
+        brightness_ += brightness_step_;
+        
+        // Reverse direction at min/max brightness
+        if (brightness_ >= 100) {
+            brightness_ = 100;
+            brightness_step_ = -1;  // start decreasing
+        } else if (brightness_ <= 0) {
+            brightness_ = 0;
+            brightness_step_ = 1;   // start increasing
+        }
+    }
+    
+    // Simulate PWM with ON/OFF ratio based on brightness
+    // For example: brightness 50 means LED is on 50% of the time
+    if (pwm_counter_ < (pwm_period_ * brightness_ / 100)) {
+        on();
+    } else {
+        off();
+    }
 }
 
 // 状态机的核心：每毫秒被调用一次

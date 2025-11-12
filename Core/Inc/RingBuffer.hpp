@@ -58,6 +58,6 @@ class RingBuffer {
 
     private:
         std::array<T, Size> buffer;
-        volatile size_t head; // modified by ISR
-        size_t tail;
+        volatile uint32_t head; // modified by ISR
+        volatile uint32_t tail;
 };

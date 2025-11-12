@@ -1,9 +1,15 @@
 #include "ST7789.hpp"
+#include "uart.hpp"
 #include <stdio.h>
 #include <cstring>
 
 #define TFT_W 240
 #define TFT_H 280
+#define PIXEL_COUNT (TFT_W * TFT_H)
+
+// SDRAM 中的双缓冲
+#define FRAME_BUFFER_0 ((uint16_t*)0xC0000000)           // 帧缓冲 A
+#define FRAME_BUFFER_1 ((uint16_t*)(0xC0000000 + (PIXEL_COUNT * 2)))  // 帧缓冲 B
 
 // DC 引脚控制宏
 #define LCD_DC_Command  HAL_GPIO_WritePin(dc_port_, dc_pin_, GPIO_PIN_RESET)
@@ -13,7 +19,9 @@ ST7789::ST7789(SPI_HandleTypeDef* hspi,
                GPIO_TypeDef* dc_port, uint16_t dc_pin,
                GPIO_TypeDef* bl_port, uint16_t bl_pin)
     : hspi_(hspi), dc_port_(dc_port), dc_pin_(dc_pin),
-      bl_port_(bl_port), bl_pin_(bl_pin) {}
+      bl_port_(bl_port), bl_pin_(bl_pin),
+      current_buffer_(FRAME_BUFFER_0),
+      is_transmitting_(false) {}
 
 void ST7789::spi_set_datasize(uint16_t datasize) {
     hspi_->Init.DataSize = datasize;
@@ -33,51 +41,40 @@ void ST7789::write_data_8bit(uint8_t data) {
 void ST7789::write_data_16bit(uint16_t data) {
     uint8_t buf[2];
     LCD_DC_Data;
-    
     buf[0] = data >> 8;
     buf[1] = data & 0xFF;
-    
     HAL_SPI_Transmit(hspi_, buf, 2, 100);
 }
 
 void ST7789::set_addr_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
-    // 设置列地址 (CASET - 0x2A)
+    const uint16_t X_OFFSET = 0;
+    const uint16_t Y_OFFSET = 20;
+    
     write_cmd(0x2A);
-    write_data_16bit(x1);
-    write_data_16bit(x2);
+    write_data_16bit(x1 + X_OFFSET);
+    write_data_16bit(x2 + X_OFFSET);
     
-    // 设置行地址 (RASET - 0x2B)
     write_cmd(0x2B);
-    write_data_16bit(y1);
-    write_data_16bit(y2);
+    write_data_16bit(y1 + Y_OFFSET);
+    write_data_16bit(y2 + Y_OFFSET);
     
-    // 开始写入显存 (RAMWR - 0x2C)
     write_cmd(0x2C);
 }
 
 void ST7789::init_basic() {
-    // 打开背光
     HAL_GPIO_WritePin(bl_port_, bl_pin_, GPIO_PIN_SET);
     HAL_Delay(10);
     
-    // 软件复位
     write_cmd(0x01);
     HAL_Delay(150);
-    
-    // 等待屏幕复位完成
     HAL_Delay(10);
     
-    // =============== 完整的初始化序列（对标参考代码） ===============
-    
-    // 显存访问控制 (0x36) - 设置访问显存的方式
     write_cmd(0x36);
-    write_data_8bit(0x00);  // 从上到下、从左到右，RGB 像素格式
+    write_data_8bit(0x00);
     
-    // 接口像素格式 (0x3A) - 设置使用 16 位色
     write_cmd(0x3A);
-    write_data_8bit(0x05);  // 16 位 RGB565 色
+    write_data_8bit(0x05);
     
-    // ============== 分压比设置 (0xB2) ==============
     write_cmd(0xB2);
     write_data_8bit(0x0C);
     write_data_8bit(0x0C);
@@ -85,40 +82,31 @@ void ST7789::init_basic() {
     write_data_8bit(0x33);
     write_data_8bit(0x33);
     
-    // ============== 栅极电压设置 (0xB7) ==============
     write_cmd(0xB7);
     write_data_8bit(0x35);
     
-    // ============== 公共电压设置 (0xBB) ==============
     write_cmd(0xBB);
     write_data_8bit(0x19);
     
-    // ============== (0xC0) ==============
     write_cmd(0xC0);
     write_data_8bit(0x2C);
     
-    // ============== VDV 和 VRH 来源设置 (0xC2) ==============
     write_cmd(0xC2);
     write_data_8bit(0x01);
     
-    // ============== VRH 电压设置 (0xC3) ==============
     write_cmd(0xC3);
     write_data_8bit(0x12);
     
-    // ============== VDV 电压设置 (0xC4) ==============
     write_cmd(0xC4);
     write_data_8bit(0x20);
     
-    // ============== 帧率控制 (0xC6) ==============
     write_cmd(0xC6);
     write_data_8bit(0x0F);
     
-    // ============== 电源控制 (0xD0) ==============
     write_cmd(0xD0);
     write_data_8bit(0xA4);
     write_data_8bit(0xA1);
     
-    // ============== 正极电压伽马值设定 (0xE0) ==============
     write_cmd(0xE0);
     write_data_8bit(0xD0);
     write_data_8bit(0x04);
@@ -135,7 +123,6 @@ void ST7789::init_basic() {
     write_data_8bit(0x1F);
     write_data_8bit(0x23);
     
-    // ============== 负极电压伽马值设定 (0xE1) ==============
     write_cmd(0xE1);
     write_data_8bit(0xD0);
     write_data_8bit(0x04);
@@ -152,53 +139,370 @@ void ST7789::init_basic() {
     write_data_8bit(0x20);
     write_data_8bit(0x23);
     
-    // ============== 显示反演 (0x21) ==============
     write_cmd(0x21);
     
-    // ============== 退出休眠 (0x11) ==============
     write_cmd(0x11);
-    HAL_Delay(120);  // 关键延迟
+    HAL_Delay(120);
     
-    // ============== 打开显示 (0x29) ==============
     write_cmd(0x29);
     HAL_Delay(20);
-    
-    printf("ST7789 init done\r\n");
 }
 
+// ========== 双缓冲 + 同步版本 ==========
 void ST7789::fill_screen(uint16_t color) {
-    // 1. 设置地址窗口（包括发送 0x2C 命令进入数据模式）
-    set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
-    
-    // 2. 确保 DC 在数据模式（0x2C 后 DC 会被设为低，所以要重新设为高）
-    LCD_DC_Data;
-    
-    // 3. 切换为 16 位数据宽度以提高效率
-    spi_set_datasize(SPI_DATASIZE_16BIT);
-    
-    // 4. 直接发送颜色数据到屏幕显存
-    // 使用循环发送每个像素（240 * 280 = 67200 像素）
-    uint32_t pixel_count = TFT_W * TFT_H;
-    for (uint32_t i = 0; i < pixel_count; i++) {
-        HAL_SPI_Transmit(hspi_, (uint8_t*)&color, 1, 1000);
+    // 等待之前的传输完成
+    while (is_transmitting_) {
+        HAL_Delay(1);
     }
     
-    // 5. 切换回 8 位数据宽度（用于命令传输）
-    spi_set_datasize(SPI_DATASIZE_8BIT);
+    // 获取要填充的缓冲区（与当前显示的不同）
+    uint16_t* fill_buffer = (current_buffer_ == FRAME_BUFFER_0) ? FRAME_BUFFER_1 : FRAME_BUFFER_0;
     
-    printf("fill_screen done, color=0x%04X\r\n", color);
+    // 1. 快速填充背缓冲（32 位写入）
+    uint32_t color32 = (color << 16) | color;
+    uint32_t* ptr32 = (uint32_t*)fill_buffer;
+    for (uint32_t i = 0; i < PIXEL_COUNT / 2; i++) {
+        ptr32[i] = color32;
+    }
+    
+    // 2. 清除 D-Cache
+    SCB_CleanInvalidateDCache_by_Addr((uint32_t*)fill_buffer, PIXEL_COUNT * 2);
+    
+    // 3. 设置显示窗口
+    set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
+    
+    // 4. DC 切到数据模式
+    LCD_DC_Data;
+    HAL_Delay(1);
+    
+    // 5. 16 位 SPI 宽度
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    // 6. 标记开始传输
+    is_transmitting_ = true;
+    
+    // 7. 发送缓冲数据
+    #define LARGE_CHUNK 4096
+    uint32_t remaining = PIXEL_COUNT;
+    uint16_t* ptr = fill_buffer;
+    
+    while (remaining > 0) {
+        uint32_t chunk = (remaining > LARGE_CHUNK) ? LARGE_CHUNK : remaining;
+        HAL_SPI_Transmit(hspi_, (uint8_t*)ptr, chunk, 10000);
+        ptr += chunk;
+        remaining -= chunk;
+    }
+    
+    // 8. 标记传输完成
+    is_transmitting_ = false;
+    
+    // 9. 等待LCD扫描完成，避免撕裂
+    // ST7789没有VSYNC，所以用延迟模拟等待扫描周期
+    // 60Hz刷新率 ≈ 16.7ms，我们等待一个完整帧时间
+    // HAL_Delay(5);
+    
+    // 10. 切换当前缓冲指针
+    current_buffer_ = fill_buffer;
+    
+    // 11. 切回 8 位
+    spi_set_datasize(SPI_DATASIZE_8BIT);
 }
 
 void ST7789::display_test_colors() {
-    // 红色
-    fill_screen(0xF800);
+    fill_screen(0xF800);  // 红
     HAL_Delay(800);
     
-    // 绿色
-    fill_screen(0x07E0);
+    fill_screen(0x07E0);  // 绿
     HAL_Delay(800);
     
-    // 蓝色
-    fill_screen(0x001F);
+    fill_screen(0x001F);  // 蓝
     HAL_Delay(800);
+}
+
+// ========== 颜色辅助函数 ==========
+uint16_t ST7789::rgb_to_rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+}
+
+uint16_t ST7789::blend_color(uint16_t color1, uint16_t color2, uint8_t ratio) {
+    // 提取RGB分量
+    uint8_t r1 = (color1 >> 11) & 0x1F;
+    uint8_t g1 = (color1 >> 5) & 0x3F;
+    uint8_t b1 = color1 & 0x1F;
+    
+    uint8_t r2 = (color2 >> 11) & 0x1F;
+    uint8_t g2 = (color2 >> 5) & 0x3F;
+    uint8_t b2 = color2 & 0x1F;
+    
+    // 线性插值
+    uint8_t r = (r1 * (255 - ratio) + r2 * ratio) / 255;
+    uint8_t g = (g1 * (255 - ratio) + g2 * ratio) / 255;
+    uint8_t b = (b1 * (255 - ratio) + b2 * ratio) / 255;
+    
+    return (r << 11) | (g << 5) | b;
+}
+
+// ========== 水平渐变（左到右）==========
+void ST7789::gradient_horizontal(uint16_t color1, uint16_t color2) {
+    // 获取背缓冲
+    uint16_t* fill_buffer = (current_buffer_ == FRAME_BUFFER_0) ? FRAME_BUFFER_1 : FRAME_BUFFER_0;
+    
+    // 为每一列计算颜色
+    for (uint16_t x = 0; x < TFT_W; x++) {
+        uint8_t ratio = (x * 255) / (TFT_W - 1);
+        uint16_t color = blend_color(color1, color2, ratio);
+        
+        // 填充整列
+        for (uint16_t y = 0; y < TFT_H; y++) {
+            fill_buffer[y * TFT_W + x] = color;
+        }
+    }
+    
+    // 清除D-Cache并发送
+    SCB_CleanInvalidateDCache_by_Addr((uint32_t*)fill_buffer, PIXEL_COUNT * 2);
+    set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
+    LCD_DC_Data;
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    uint32_t remaining = PIXEL_COUNT;
+    uint16_t* ptr = fill_buffer;
+    while (remaining > 0) {
+        uint32_t chunk = (remaining > 4096) ? 4096 : remaining;
+        HAL_SPI_Transmit(hspi_, (uint8_t*)ptr, chunk, 10000);
+        ptr += chunk;
+        remaining -= chunk;
+    }
+    
+    current_buffer_ = fill_buffer;
+    spi_set_datasize(SPI_DATASIZE_8BIT);
+}
+
+// ========== 垂直渐变（上到下）==========
+void ST7789::gradient_vertical(uint16_t color1, uint16_t color2) {
+    uint16_t* fill_buffer = (current_buffer_ == FRAME_BUFFER_0) ? FRAME_BUFFER_1 : FRAME_BUFFER_0;
+    
+    // 为每一行计算颜色
+    for (uint16_t y = 0; y < TFT_H; y++) {
+        uint8_t ratio = (y * 255) / (TFT_H - 1);
+        uint16_t color = blend_color(color1, color2, ratio);
+        
+        // 填充整行（使用32位优化）
+        uint32_t color32 = (color << 16) | color;
+        uint32_t* ptr32 = (uint32_t*)&fill_buffer[y * TFT_W];
+        for (uint16_t x = 0; x < TFT_W / 2; x++) {
+            ptr32[x] = color32;
+        }
+    }
+    
+    SCB_CleanInvalidateDCache_by_Addr((uint32_t*)fill_buffer, PIXEL_COUNT * 2);
+    set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
+    LCD_DC_Data;
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    uint32_t remaining = PIXEL_COUNT;
+    uint16_t* ptr = fill_buffer;
+    while (remaining > 0) {
+        uint32_t chunk = (remaining > 4096) ? 4096 : remaining;
+        HAL_SPI_Transmit(hspi_, (uint8_t*)ptr, chunk, 10000);
+        ptr += chunk;
+        remaining -= chunk;
+    }
+    
+    current_buffer_ = fill_buffer;
+    spi_set_datasize(SPI_DATASIZE_8BIT);
+}
+
+// ========== 彩虹渐变（水平）==========
+void ST7789::gradient_rainbow_horizontal() {
+    uint16_t* fill_buffer = (current_buffer_ == FRAME_BUFFER_0) ? FRAME_BUFFER_1 : FRAME_BUFFER_0;
+    
+    for (uint16_t x = 0; x < TFT_W; x++) {
+        // 将位置映射到0-359度
+        uint16_t hue = (x * 360) / TFT_W;
+        
+        // HSV to RGB (S=100%, V=100%)
+        uint8_t r, g, b;
+        uint16_t region = hue / 60;
+        uint16_t remainder = (hue % 60) * 255 / 60;
+        
+        switch (region) {
+            case 0:  r = 255; g = remainder; b = 0; break;
+            case 1:  r = 255 - remainder; g = 255; b = 0; break;
+            case 2:  r = 0; g = 255; b = remainder; break;
+            case 3:  r = 0; g = 255 - remainder; b = 255; break;
+            case 4:  r = remainder; g = 0; b = 255; break;
+            default: r = 255; g = 0; b = 255 - remainder; break;
+        }
+        
+        uint16_t color = rgb_to_rgb565(r, g, b);
+        
+        // 填充整列
+        for (uint16_t y = 0; y < TFT_H; y++) {
+            fill_buffer[y * TFT_W + x] = color;
+        }
+    }
+    
+    SCB_CleanInvalidateDCache_by_Addr((uint32_t*)fill_buffer, PIXEL_COUNT * 2);
+    set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
+    LCD_DC_Data;
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    uint32_t remaining = PIXEL_COUNT;
+    uint16_t* ptr = fill_buffer;
+    while (remaining > 0) {
+        uint32_t chunk = (remaining > 4096) ? 4096 : remaining;
+        HAL_SPI_Transmit(hspi_, (uint8_t*)ptr, chunk, 10000);
+        ptr += chunk;
+        remaining -= chunk;
+    }
+    
+    current_buffer_ = fill_buffer;
+    spi_set_datasize(SPI_DATASIZE_8BIT);
+}
+
+// ========== 彩虹渐变（垂直）==========
+void ST7789::gradient_rainbow_vertical() {
+    uint16_t* fill_buffer = (current_buffer_ == FRAME_BUFFER_0) ? FRAME_BUFFER_1 : FRAME_BUFFER_0;
+    
+    for (uint16_t y = 0; y < TFT_H; y++) {
+        uint16_t hue = (y * 360) / TFT_H;
+        
+        uint8_t r, g, b;
+        uint16_t region = hue / 60;
+        uint16_t remainder = (hue % 60) * 255 / 60;
+        
+        switch (region) {
+            case 0:  r = 255; g = remainder; b = 0; break;
+            case 1:  r = 255 - remainder; g = 255; b = 0; break;
+            case 2:  r = 0; g = 255; b = remainder; break;
+            case 3:  r = 0; g = 255 - remainder; b = 255; break;
+            case 4:  r = remainder; g = 0; b = 255; break;
+            default: r = 255; g = 0; b = 255 - remainder; break;
+        }
+        
+        uint16_t color = rgb_to_rgb565(r, g, b);
+        uint32_t color32 = (color << 16) | color;
+        
+        // 填充整行
+        uint32_t* ptr32 = (uint32_t*)&fill_buffer[y * TFT_W];
+        for (uint16_t x = 0; x < TFT_W / 2; x++) {
+            ptr32[x] = color32;
+        }
+    }
+    
+    SCB_CleanInvalidateDCache_by_Addr((uint32_t*)fill_buffer, PIXEL_COUNT * 2);
+    set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
+    LCD_DC_Data;
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    uint32_t remaining = PIXEL_COUNT;
+    uint16_t* ptr = fill_buffer;
+    while (remaining > 0) {
+        uint32_t chunk = (remaining > 4096) ? 4096 : remaining;
+        HAL_SPI_Transmit(hspi_, (uint8_t*)ptr, chunk, 10000);
+        ptr += chunk;
+        remaining -= chunk;
+    }
+    
+    current_buffer_ = fill_buffer;
+    spi_set_datasize(SPI_DATASIZE_8BIT);
+}
+
+// ========== 渐变色演示 ==========
+void ST7789::display_gradient_demo() {
+    // 1. 红到蓝 水平渐变
+    gradient_horizontal(0xF800, 0x001F);
+    HAL_Delay(2000);
+    
+    // 2. 绿到黄 垂直渐变
+    gradient_vertical(0x07E0, 0xFFE0);
+    HAL_Delay(2000);
+    
+    // 3. 黑到白 水平渐变
+    gradient_horizontal(0x0000, 0xFFFF);
+    HAL_Delay(2000);
+    
+    // 4. 紫到青 垂直渐变
+    gradient_vertical(0xF81F, 0x07FF);
+    HAL_Delay(2000);
+    
+    // 5. 彩虹渐变 水平
+    gradient_rainbow_horizontal();
+    HAL_Delay(2000);
+    
+    // 6. 彩虹渐变 垂直
+    gradient_rainbow_vertical();
+    HAL_Delay(2000);
+}
+
+// ========== 颜色循环动画（无限循环）==========
+void ST7789::color_cycle_loop() {
+    // 使用更高精度的色调值（0-3600，即0.1度精度）
+    uint32_t hue_x10 = 0;  // 色调 × 10
+    uint32_t frame_count = 0;
+    uint32_t last_fps_print = HAL_GetTick();
+    
+    while (1) {
+        uint32_t frame_start = HAL_GetTick();
+        
+        // 改进的HSV到RGB转换，使用高精度计算获得更平滑的过渡
+        // hue_x10: 0-3599 (0.1度精度)
+        uint8_t r, g, b;
+        
+        // 使用600度单位（0-5999），每个区域1000个单位
+        uint32_t hue_scaled = (hue_x10 * 10) / 6;  // 0-5999
+        uint16_t region = hue_scaled / 1000;         // 0-5
+        uint16_t remainder = hue_scaled % 1000;      // 0-999
+        
+        // 平滑插值计算（0-255范围）
+        uint16_t rising = (remainder * 255) / 999;
+        uint16_t falling = 255 - rising;
+        
+        switch (region) {
+            case 0:  r = 255; g = rising; b = 0; break;
+            case 1:  r = falling; g = 255; b = 0; break;
+            case 2:  r = 0; g = 255; b = rising; break;
+            case 3:  r = 0; g = falling; b = 255; break;
+            case 4:  r = rising; g = 0; b = 255; break;
+            default: r = 255; g = 0; b = falling; break;
+        }
+        
+        // 转换为RGB565并填充整个屏幕
+        uint16_t color = rgb_to_rgb565(r, g, b);
+        fill_screen(color);
+        
+        uint32_t frame_end = HAL_GetTick();
+        uint32_t frame_time = frame_end - frame_start;
+        
+        // 极慢增加色调（每帧0.1度），完全消除撕裂视觉
+        hue_x10 += 5;  // 每帧增加0.1度 × N
+        if (hue_x10 >= 3600) {
+            hue_x10 = 0;
+        }
+        
+        frame_count++;
+        
+        // 处理UART数据（回显接收到的字符）
+        while (Uart::get_instance().available() > 0) {
+            int byte = Uart::get_instance().read();
+            if (byte != -1) {
+                printf("%c", (char)byte);
+            }
+        }
+        
+        // 每5秒打印一次FPS统计
+        if (frame_end - last_fps_print >= 5000) {
+            uint32_t elapsed = frame_end - last_fps_print;
+            uint32_t fps_x10 = (frame_count * 10000) / elapsed;  // FPS * 10
+            printf("[FPS] %lu.%lu fps, frame_time=%lums, frames=%lu, hue=%lu.%lu\r\n", 
+                   (unsigned long)(fps_x10 / 10), 
+                   (unsigned long)(fps_x10 % 10),
+                   (unsigned long)frame_time,
+                   (unsigned long)frame_count,
+                   (unsigned long)(hue_x10 / 10),
+                   (unsigned long)(hue_x10 % 10));
+            frame_count = 0;
+            last_fps_print = frame_end;
+        }
+    }
 }

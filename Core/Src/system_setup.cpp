@@ -52,6 +52,7 @@ void MPU_Config(void) {
     HAL_MPU_Disable();
 
     // Initializes and configures the Region and the memory to be protected
+    // Region 0: External SDRAM (0xC0000000)
     MPU_InitStruct.Enable = MPU_REGION_ENABLE;
     MPU_InitStruct.Number = MPU_REGION_NUMBER0;
     MPU_InitStruct.BaseAddress = 0xC0000000;
@@ -64,12 +65,14 @@ void MPU_Config(void) {
     MPU_InitStruct.IsCacheable = MPU_ACCESS_CACHEABLE;
     MPU_InitStruct.IsBufferable = MPU_ACCESS_BUFFERABLE;
 
-    // intializes for region 1, internal sdram-DTCMRAM
+    HAL_MPU_ConfigRegion(&MPU_InitStruct);  // CRITICAL: Apply Region 0 config!
+
+    // Region 1: Internal DTCMRAM (0x20000000)
     MPU_InitStruct.Number = MPU_REGION_NUMBER1;
     MPU_InitStruct.BaseAddress = 0x20000000;
     MPU_InitStruct.Size = MPU_REGION_SIZE_128KB;
 
-    HAL_MPU_ConfigRegion(&MPU_InitStruct);
+    HAL_MPU_ConfigRegion(&MPU_InitStruct);  // Apply Region 1 config
     // Enables the MPU
     HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
 }

@@ -12,6 +12,20 @@ public:
     void init_basic();
     void fill_screen(uint16_t color);
     void display_test_colors();
+    
+    // 渐变色功能
+    void gradient_horizontal(uint16_t color1, uint16_t color2);
+    void gradient_vertical(uint16_t color1, uint16_t color2);
+    void gradient_rainbow_horizontal();
+    void gradient_rainbow_vertical();
+    
+    // 高级效果
+    void display_gradient_demo();
+    void color_cycle_loop();  // 颜色循环动画（无限循环）
+    
+    // 辅助函数：RGB565颜色混合
+    static uint16_t blend_color(uint16_t color1, uint16_t color2, uint8_t ratio);
+    static uint16_t rgb_to_rgb565(uint8_t r, uint8_t g, uint8_t b);
 
 private:
     void write_cmd(uint8_t cmd);
@@ -26,4 +40,8 @@ private:
     uint16_t dc_pin_;
     GPIO_TypeDef* bl_port_;
     uint16_t bl_pin_;
+    
+    // 双缓冲相关
+    uint16_t* current_buffer_;
+    bool is_transmitting_;
 };

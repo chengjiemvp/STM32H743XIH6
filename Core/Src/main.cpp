@@ -16,7 +16,9 @@
 #include "ST7789.hpp"
 
 
-std::unique_ptr<Led> led_pc13_ptr; // only defined now, initialized in main()
+// Use static storage for Led instead of unique_ptr to avoid SDRAM allocation
+static unsigned char led_storage[sizeof(Led)];
+Led* led_pc13_ptr = nullptr;
 
 /// @brief  application entry point
 /// @retval int type 0 reprentes success
@@ -35,27 +37,33 @@ int main(void) {
     MX_TIM7_Init();
     MX_SPI5_Init();
 
-    led_pc13_ptr = std::make_unique<Led>(); // now initialize led after gpio init
-    Uart::init(&huart1);
-    Uart::get_instance().begin(); // start uart receive interrupt
-    printf("UART initialized\n");
-    HAL_TIM_Base_Start_IT(&htim6); // start TIM6 interrupt, serial status
-    HAL_TIM_Base_Start_IT(&htim7); // start TIM7 interrupt, led upate
+    // Small delay to ensure UART is ready
+    HAL_Delay(100);
 
-    // 初始化 LCD (DC: PJ11, BL: PH6)
+    // Initialize LED object using placement new on static storage
+    led_pc13_ptr = new (&led_storage) Led();
+    
+    // Initialize UART singleton (but don't start interrupts yet)
+    Uart::init(&huart1);
+    
+    printf("\r\n=== STM32H743XIH6 Started ===\r\n");
+    
+    // Initialize LCD and run test BEFORE starting any interrupts
+    // This prevents conflicts between SPI (LCD) and UART (printf in interrupts)
     ST7789 lcd(&hspi5, GPIOJ, GPIO_PIN_11, GPIOH, GPIO_PIN_6);
     lcd.init_basic();
-    lcd.display_test_colors();
-    printf("ST7789 test done.\r\n");
+    
+    // CRITICAL: Start ALL interrupts AFTER LCD initialization is complete
+    // This prevents printf() in timer interrupts from interfering with SPI transfers
+    
+    // Start all interrupts
+    Uart::get_instance().begin();
+    HAL_TIM_Base_Start_IT(&htim6);
+    HAL_TIM_Base_Start_IT(&htim7);
+    
+    printf("System ready\r\n");
 
-    while (1) {
-
-        if (Uart::get_instance().available() > 0) {
-            int byte = Uart::get_instance().read();
-            if (byte != -1) {
-                printf("Received: %c (0x%02X)\r\n", (char)byte, byte);
-            }
-        } // deal with received data via uart
-
-    }
+    // 启动颜色循环动画（无限循环，整个屏幕颜色缓慢变化）
+    // 注意：这个函数永不返回，UART和LED会在后台中断中继续工作
+    lcd.color_cycle_loop();
 }
