@@ -12,16 +12,8 @@ public:
     void init_basic();
     void fill_screen(uint16_t color);
     void display_test_colors();
-    
-    // 渐变色功能
-    void gradient_horizontal(uint16_t color1, uint16_t color2);
-    void gradient_vertical(uint16_t color1, uint16_t color2);
-    void gradient_rainbow_horizontal();
-    void gradient_rainbow_vertical();
-    
-    // 高级效果
-    void display_gradient_demo();
-    void color_cycle_loop();  // 颜色循环动画（无限循环）
+    // color cycle animation
+    void color_cycle_loop();
     
     // 辅助函数：RGB565颜色混合
     static uint16_t blend_color(uint16_t color1, uint16_t color2, uint8_t ratio);
