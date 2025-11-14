@@ -15,13 +15,20 @@
 #define LCD_DC_Command  HAL_GPIO_WritePin(dc_port_, dc_pin_, GPIO_PIN_RESET)
 #define LCD_DC_Data     HAL_GPIO_WritePin(dc_port_, dc_pin_, GPIO_PIN_SET)
 
-ST7789::ST7789(SPI_HandleTypeDef* hspi,
-               GPIO_TypeDef* dc_port, uint16_t dc_pin,
-               GPIO_TypeDef* bl_port, uint16_t bl_pin)
-    : hspi_(hspi), dc_port_(dc_port), dc_pin_(dc_pin),
-      bl_port_(bl_port), bl_pin_(bl_pin),
-      current_buffer_(FRAME_BUFFER_0),
-      is_transmitting_(false) {}
+ST7789::ST7789(
+    SPI_HandleTypeDef* hspi,
+    GPIO_TypeDef* dc_port, 
+    uint16_t dc_pin,
+    GPIO_TypeDef* bl_port, 
+    uint16_t bl_pin
+) :
+    hspi_(hspi),
+    dc_port_(dc_port),
+    dc_pin_(dc_pin),
+    bl_port_(bl_port),
+    bl_pin_(bl_pin),
+    current_buffer_(FRAME_BUFFER_0),
+    is_transmitting_(false) {}
 
 void ST7789::spi_set_datasize(uint16_t datasize) {
     hspi_->Init.DataSize = datasize;
@@ -53,60 +60,45 @@ void ST7789::set_addr_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
     write_cmd(0x2A);
     write_data_16bit(x1 + X_OFFSET);
     write_data_16bit(x2 + X_OFFSET);
-    
     write_cmd(0x2B);
     write_data_16bit(y1 + Y_OFFSET);
     write_data_16bit(y2 + Y_OFFSET);
-    
     write_cmd(0x2C);
 }
 
 void ST7789::init_basic() {
     HAL_GPIO_WritePin(bl_port_, bl_pin_, GPIO_PIN_SET);
     HAL_Delay(10);
-    
     write_cmd(0x01);
     HAL_Delay(150);
     HAL_Delay(10);
-    
     write_cmd(0x36);
     write_data_8bit(0x00);
-    
     write_cmd(0x3A);
     write_data_8bit(0x05);
-    
     write_cmd(0xB2);
     write_data_8bit(0x0C);
     write_data_8bit(0x0C);
     write_data_8bit(0x00);
     write_data_8bit(0x33);
     write_data_8bit(0x33);
-    
     write_cmd(0xB7);
     write_data_8bit(0x35);
-    
     write_cmd(0xBB);
     write_data_8bit(0x19);
-    
     write_cmd(0xC0);
     write_data_8bit(0x2C);
-    
     write_cmd(0xC2);
     write_data_8bit(0x01);
-    
     write_cmd(0xC3);
     write_data_8bit(0x12);
-    
     write_cmd(0xC4);
     write_data_8bit(0x20);
-    
     write_cmd(0xC6);
     write_data_8bit(0x0F);
-    
     write_cmd(0xD0);
     write_data_8bit(0xA4);
     write_data_8bit(0xA1);
-    
     write_cmd(0xE0);
     write_data_8bit(0xD0);
     write_data_8bit(0x04);
@@ -122,7 +114,6 @@ void ST7789::init_basic() {
     write_data_8bit(0x0B);
     write_data_8bit(0x1F);
     write_data_8bit(0x23);
-    
     write_cmd(0xE1);
     write_data_8bit(0xD0);
     write_data_8bit(0x04);
@@ -138,12 +129,9 @@ void ST7789::init_basic() {
     write_data_8bit(0x1F);
     write_data_8bit(0x20);
     write_data_8bit(0x23);
-    
     write_cmd(0x21);
-    
     write_cmd(0x11);
     HAL_Delay(120);
-    
     write_cmd(0x29);
     HAL_Delay(20);
 }
@@ -167,20 +155,15 @@ void ST7789::fill_screen(uint16_t color) {
     
     // 2. 清除 D-Cache
     SCB_CleanInvalidateDCache_by_Addr((uint32_t*)fill_buffer, PIXEL_COUNT * 2);
-    
     // 3. 设置显示窗口
     set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
-    
     // 4. DC 切到数据模式
     LCD_DC_Data;
     HAL_Delay(1);
-    
     // 5. 16 位 SPI 宽度
     spi_set_datasize(SPI_DATASIZE_16BIT);
-    
     // 6. 标记开始传输
     is_transmitting_ = true;
-    
     // 7. 发送缓冲数据
     #define LARGE_CHUNK 4096
     uint32_t remaining = PIXEL_COUNT;
@@ -195,15 +178,8 @@ void ST7789::fill_screen(uint16_t color) {
     
     // 8. 标记传输完成
     is_transmitting_ = false;
-    
-    // 9. 等待LCD扫描完成，避免撕裂
-    // ST7789没有VSYNC，所以用延迟模拟等待扫描周期
-    // 60Hz刷新率 ≈ 16.7ms，我们等待一个完整帧时间
-    // HAL_Delay(5);
-    
     // 10. 切换当前缓冲指针
     current_buffer_ = fill_buffer;
-    
     // 11. 切回 8 位
     spi_set_datasize(SPI_DATASIZE_8BIT);
 }
