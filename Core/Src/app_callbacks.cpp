@@ -11,9 +11,10 @@ extern Led* led_pc13_ptr;
 ///  @brief uart receive callback
 void uart_rx_callback(uint8_t byte) {
     printf("%c", byte);
-} // user defined uart receive callback
+}
 
-extern "C" { // system callback functions
+/// system callback functions
+extern "C" {
     ///  @brief  uart receive callback
     ///  @param  huart: uart handle pointer, UART_HandleTypeDef structure
     ///  @retval None

@@ -23,19 +23,10 @@ class Uart {
 
         static void init(UART_HandleTypeDef* huart) {
             if (!initialized_) {
-                printf("[DEBUG] Uart::init called with huart=%p\r\n", (void*)huart);
-                if (huart != nullptr) {
-                    printf("[DEBUG] huart->Instance=%p\r\n", (void*)huart->Instance);
-                }
                 // Use placement new on static storage instead of dynamic allocation
                 // This prevents the instance from being allocated in SDRAM
                 instance_ = new (&instance_storage_) Uart(huart);
                 initialized_ = true;
-                printf("[DEBUG] Uart instance created at %p\r\n", (void*)instance_);
-                if (instance_ != nullptr && instance_->huart_ != nullptr) {
-                    printf("[DEBUG] instance_->huart_=%p, instance_->huart_->Instance=%p\r\n", 
-                           (void*)instance_->huart_, (void*)instance_->huart_->Instance);
-                }
             }
         } // initialize singleton instance
 
