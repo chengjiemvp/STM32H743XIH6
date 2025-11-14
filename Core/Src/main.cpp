@@ -56,9 +56,21 @@ int main(void) {
     // CRITICAL: Start ALL interrupts AFTER LCD initialization is complete
     // This prevents printf() in timer interrupts from interfering with SPI transfers
     
-    Uart::get_instance().set_rx_callback(uart_rx_callback); // register UART receive callback
-    // Start all interrupts
+    // CRITICAL: UART CALLBACK INITIALIZATION (关键步骤 - UART回调初始化)
+    // =================================================================
+    // This is where we wire up the UART receive callback chain.
+    // Order matters! Must do: init() → set_rx_callback() → begin()
+    //
+    // 1. set_rx_callback: Register user callback function
+    //    When data arrives: isr_handler() will call uart_rx_callback()
+    Uart::get_instance().set_rx_callback(uart_rx_callback);
+    
+    // 2. begin: Start UART interrupt reception
+    //    Enables HAL_UART_Receive_IT, triggers the callback chain on data arrival
+    //    See docs/UART_CALLBACK_FLOW.md for complete flow explanation
     Uart::get_instance().begin();
+    
+    // Start timer interrupts
     HAL_TIM_Base_Start_IT(&htim6);
     HAL_TIM_Base_Start_IT(&htim7);
     

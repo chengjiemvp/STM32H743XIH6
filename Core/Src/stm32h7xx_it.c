@@ -218,13 +218,18 @@ void DMA1_Stream0_IRQHandler(void)
 
 /**
   * @brief This function handles USART1 global interrupt.
+  * @note UART RECEIVE CALLBACK CHAIN STARTS HERE (Layer 2)
+  * @note When USART1 receives a byte, hardware triggers this ISR
+  * @note Call flow: USART1_IRQHandler (HERE) → HAL_UART_IRQHandler
+  *       → HAL_UART_RxCpltCallback → Uart::isr_handler → user callback
+  * @see docs/UART_CALLBACK_FLOW.md for complete explanation
   */
 void USART1_IRQHandler(void)
 {
   /* USER CODE BEGIN USART1_IRQn 0 */
 
   /* USER CODE END USART1_IRQn 0 */
-  HAL_UART_IRQHandler(&huart1);
+  HAL_UART_IRQHandler(&huart1);  // Delegate to HAL library
   /* USER CODE BEGIN USART1_IRQn 1 */
 
   /* USER CODE END USART1_IRQn 1 */
