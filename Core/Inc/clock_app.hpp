@@ -25,6 +25,9 @@ private:
     uint16_t* buffer_[2];
     uint8_t current_buffer_idx_;
     
+    // 静态表盘缓冲区（暂时仍在SDRAM，内存配置待优化）
+    uint16_t* static_dial_;
+    
     ST7789* lcd_;
     
     // 秒表状态
@@ -39,13 +42,21 @@ private:
     
     // 绘制函数
     void draw_to_buffer(uint16_t* fb);
+    void render_static_dial();  // 预渲染静态表盘（只调用一次）
+    void draw_pointers_only(uint16_t* fb);  // 只绘制指针到缓冲区
     
     // 图形绘制基础函数
     void set_pixel(uint16_t* fb, uint16_t x, uint16_t y, uint16_t color);
+    void set_pixel_aa(uint16_t* fb, uint16_t x, uint16_t y, uint16_t color, uint8_t alpha);
     void draw_line(uint16_t* fb, int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
+    void draw_line_aa(uint16_t* fb, int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
     void draw_thick_line(uint16_t* fb, int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t thickness, uint16_t color);
+    void draw_thick_line_aa(uint16_t* fb, int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t thickness, uint16_t color);
     void draw_circle(uint16_t* fb, uint16_t cx, uint16_t cy, uint16_t r, uint16_t color);
     void fill_circle(uint16_t* fb, uint16_t cx, uint16_t cy, uint16_t r, uint16_t color);
+    
+    // 辅助函数
+    uint16_t blend_color(uint16_t fg, uint16_t bg, uint8_t alpha);
     
     // 查表sin/cos
     int16_t get_sin(uint16_t angle);
