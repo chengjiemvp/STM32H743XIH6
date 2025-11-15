@@ -50,6 +50,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/system_setup.cpp
     Core/Src/app_callbacks.cpp
     Core/Src/ST7789.cpp
+    Core/Src/clock_app.cpp
 )
 
 # Add include paths

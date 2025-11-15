@@ -186,6 +186,53 @@ void ST7789::fill_screen(uint16_t color) {
     spi_set_datasize(SPI_DATASIZE_8BIT);
 }
 
+// ========== 从外部buffer更新屏幕 ==========
+void ST7789::update_from_buffer(uint16_t* buffer) {
+    while (is_transmitting_) {
+        HAL_Delay(1);
+    }
+    
+    // 直接在SDRAM上做字节交换（原地修改）
+    for (uint32_t i = 0; i < PIXEL_COUNT; i++) {
+        buffer[i] = __REV16(buffer[i]);  // 字节交换
+    }
+    
+    // 清理D-Cache
+    SCB_CleanDCache_by_Addr((uint32_t*)buffer, PIXEL_COUNT * 2);
+    
+    // 设置地址窗口
+    set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
+    LCD_DC_Data;
+    HAL_Delay(1);
+    
+    // 切换到16位模式
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    is_transmitting_ = true;
+    
+    // 使用轮询模式传输
+    #define LARGE_CHUNK 4096
+    uint32_t remaining = PIXEL_COUNT;
+    uint16_t* ptr = buffer;
+    
+    while (remaining > 0) {
+        uint32_t chunk = (remaining > LARGE_CHUNK) ? LARGE_CHUNK : remaining;
+        HAL_SPI_Transmit(hspi_, (uint8_t*)ptr, chunk, 10000);
+        ptr += chunk;
+        remaining -= chunk;
+    }
+    
+    is_transmitting_ = false;
+    
+    // 恢复buffer的字节序（以便下次绘制）
+    for (uint32_t i = 0; i < PIXEL_COUNT; i++) {
+        buffer[i] = __REV16(buffer[i]);
+    }
+    
+    // 切回8位模式
+    spi_set_datasize(SPI_DATASIZE_8BIT);
+}
+
 // ========== DMA版本 ==========
 void ST7789::fill_screen_dma(uint16_t color) {
     while (is_transmitting_) {
@@ -241,6 +288,35 @@ void ST7789::dma_tx_cplt_callback() {
         // 切回8位模式
         spi_set_datasize(SPI_DATASIZE_8BIT);
     }
+}
+
+// ========== DMA传输外部framebuffer ==========
+void ST7789::transmit_buffer_dma(uint16_t* buffer) {
+    while (is_transmitting_) {
+        HAL_Delay(1);
+    }
+    
+    // 清除D-Cache
+    SCB_CleanDCache_by_Addr((uint32_t*)buffer, PIXEL_COUNT * 2);
+    
+    // 设置地址窗口
+    set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
+    LCD_DC_Data;
+    HAL_Delay(1);
+    
+    // 切换到16位模式
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    is_transmitting_ = true;
+    dma_chunk_count_ = 0;
+    
+    // 分成两个chunk传输
+    uint16_t* ptr = buffer;
+    uint32_t chunk_size = 33600;
+    dma_next_ptr_ = ptr + chunk_size;
+    
+    // 启动第一个chunk的DMA传输
+    HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)ptr, chunk_size);
 }
 
 void ST7789::display_test_colors() {
@@ -347,5 +423,82 @@ void ST7789::color_cycle_loop() {
             frame_count = 0;
             last_fps_print = frame_end;
         }
+    }
+}
+
+// ========== 颜色时钟显示 ==========
+void ST7789::clock_color_display() {
+    // ⭐ 设置初始时间为12:30:45（更容易看到颜色）
+    uint8_t hours = 12;
+    uint8_t minutes = 30;
+    uint8_t seconds = 45;
+    
+    uint32_t last_update = HAL_GetTick();
+    uint32_t last_print = HAL_GetTick();
+    
+    printf("[CLOCK] Color Clock Started!\r\n");
+    printf("[CLOCK] Initial time: %02d:%02d:%02d\r\n", hours, minutes, seconds);
+    printf("[CLOCK] Screen color represents time:\r\n");
+    printf("[CLOCK]   Red   = Hours   (0-23)\r\n");
+    printf("[CLOCK]   Green = Minutes (0-59)\r\n");
+    printf("[CLOCK]   Blue  = Seconds (0-59)\r\n\r\n");
+    
+    // 立即显示一次
+    uint8_t r = (hours * 255) / 23;
+    uint8_t g = (minutes * 255) / 59;
+    uint8_t b = (seconds * 255) / 59;
+    uint16_t color = rgb_to_rgb565(r, g, b);
+    printf("[CLOCK] First frame - Color: R=%d G=%d B=%d (0x%04X)\r\n", r, g, b, color);
+    fill_screen_dma(color);
+    
+    // ⭐ 等待第一帧传输完成
+    while (is_transmitting_) {
+        HAL_Delay(1);
+    }
+    printf("[CLOCK] First frame transmitted successfully!\r\n");
+    
+    while (1) {
+        uint32_t now = HAL_GetTick();
+        
+        // 每秒更新
+        if (now - last_update >= 1000) {
+            last_update = now;
+            
+            // 时间递增
+            seconds++;
+            if (seconds >= 60) {
+                seconds = 0;
+                minutes++;
+                if (minutes >= 60) {
+                    minutes = 0;
+                    hours++;
+                    if (hours >= 24) {
+                        hours = 0;
+                    }
+                }
+            }
+            
+            // 映射时间到颜色
+            uint8_t r = (hours * 255) / 23;      // 0-23 → 0-255
+            uint8_t g = (minutes * 255) / 59;    // 0-59 → 0-255
+            uint8_t b = (seconds * 255) / 59;    // 0-59 → 0-255
+            
+            uint16_t color = rgb_to_rgb565(r, g, b);
+            fill_screen_dma(color);
+            
+            // ⭐ 等待DMA传输完成（关键！）
+            while (is_transmitting_) {
+                HAL_Delay(1);
+            }
+            
+            // 每5秒打印一次时间
+            if (now - last_print >= 5000) {
+                last_print = now;
+                printf("[CLOCK] %02d:%02d:%02d - Color: R=%d G=%d B=%d\r\n",
+                       hours, minutes, seconds, r, g, b);
+            }
+        }
+        
+        HAL_Delay(10);
     }
 }

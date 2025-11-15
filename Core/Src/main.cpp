@@ -15,6 +15,7 @@
 #include "uart.hpp"
 #include "system_setup.hpp"
 #include "ST7789.hpp"
+#include "clock_app.hpp"
 
 
 // use static storage for Led instead of unique_ptr to avoid SDRAM allocation
@@ -65,6 +66,12 @@ int main(void) {
     HAL_TIM_Base_Start_IT(&htim7);
     printf("[%s] %s", "LOG", "system ready\r\n");
 
-    // start lcd cycle loop
-    g_lcd_ptr->color_cycle_loop();
+    // ⭐ DMA双缓冲秒表应用（平滑指针）
+    ClockApp stopwatch(g_lcd_ptr);
+    stopwatch.run();
+    
+    // 其他模式：
+    // DigitalClock dclock(g_lcd_ptr); dclock.set_time(12, 30, 0); dclock.run();  // 数字时钟
+    // g_lcd_ptr->color_cycle_loop();  // 彩虹动画
+    // g_lcd_ptr->clock_color_display();  // 颜色时钟
 }
