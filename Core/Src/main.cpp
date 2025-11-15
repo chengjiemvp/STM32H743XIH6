@@ -3,6 +3,7 @@
 #include <memory>
 #include <stdio.h>
 #include "gpio.h"
+#include "dma.h"  // ⭐ 添加DMA头文件
 #include "fmc.h"
 #include "usart.h"
 #include "tim.h"
@@ -20,6 +21,10 @@
 static unsigned char led_storage[sizeof(Led)];
 Led* led_pc13_ptr = nullptr;
 
+// ⭐ LCD全局指针，用于DMA回调
+static unsigned char lcd_storage[sizeof(ST7789)];
+ST7789* g_lcd_ptr = nullptr;
+
 /// @brief  application entry point
 /// @retval int type 0 reprentes success
 int main(void) {
@@ -31,6 +36,7 @@ int main(void) {
 
     // initial all hardware peripherals
     MX_GPIO_Init();
+    MX_DMA_Init();  // ⭐ 关键：必须在SPI初始化之前调用，启用DMA时钟
     MX_FMC_Init();
     // wakeup sdram after fmc init
     bsp::sdram::init_sequence(&hsdram1);
@@ -47,9 +53,9 @@ int main(void) {
     // Initialize UART singleton (but don't start interrupts yet)
     Uart::init(&huart1);
     printf("[%s] %s", "LOG", "STM32H743XIH6 started\r\n");
-    // Initialize LCD and run test BEFORE starting any interrupts
-    ST7789 lcd(&hspi5, GPIOJ, GPIO_PIN_11, GPIOH, GPIO_PIN_6);
-    lcd.init_basic();
+    // ⭐ Initialize LCD using placement new for DMA callback access
+    g_lcd_ptr = new (&lcd_storage) ST7789(&hspi5, GPIOJ, GPIO_PIN_11, GPIOH, GPIO_PIN_6);
+    g_lcd_ptr->init_basic();
 
     // register UART receive callback
     Uart::get_instance().set_rx_callback(uart_rx_callback); 
@@ -60,5 +66,5 @@ int main(void) {
     printf("[%s] %s", "LOG", "system ready\r\n");
 
     // start lcd cycle loop
-    lcd.color_cycle_loop();
+    g_lcd_ptr->color_cycle_loop();
 }

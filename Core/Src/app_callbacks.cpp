@@ -7,6 +7,7 @@
 // 声明在 main.cpp 中定义的全局 led_pc13_ptr 指针
 // 我们需要用 extern 来告诉编译器，这个变量在别处定义
 extern Led* led_pc13_ptr;
+extern ST7789* g_lcd_ptr;  // ⭐ LCD全局指针
 
 ///  @brief uart receive callback
 void uart_rx_callback(uint8_t byte) {
@@ -40,6 +41,13 @@ extern "C" {
             if (led_pc13_ptr) {
                 led_pc13_ptr->breathing();
             }
+        }
+    }
+
+    /// @brief SPI TX完成回调（DMA模式）
+    void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
+        if (hspi->Instance == SPI5 && g_lcd_ptr) {
+            g_lcd_ptr->dma_tx_cplt_callback();
         }
     }
 

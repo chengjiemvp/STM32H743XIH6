@@ -11,6 +11,7 @@ public:
 
     void init_basic();
     void fill_screen(uint16_t color);
+    void fill_screen_dma(uint16_t color);  // ⭐ 新增DMA版本
     void display_test_colors();
     // color cycle animation
     void color_cycle_loop();
@@ -18,6 +19,9 @@ public:
     // 辅助函数：RGB565颜色混合
     static uint16_t blend_color(uint16_t color1, uint16_t color2, uint8_t ratio);
     static uint16_t rgb_to_rgb565(uint8_t r, uint8_t g, uint8_t b);
+    
+    // DMA回调
+    void dma_tx_cplt_callback();
 
 private:
     void write_cmd(uint8_t cmd);
@@ -35,5 +39,9 @@ private:
     
     // 双缓冲相关
     uint16_t* current_buffer_;
-    bool is_transmitting_;
+    volatile bool is_transmitting_;
+    
+    // DMA传输状态
+    uint8_t dma_chunk_count_;     // 当前chunk计数器(0或1)
+    uint16_t* dma_next_ptr_;      // 下一个chunk的指针
 };

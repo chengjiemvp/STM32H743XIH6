@@ -28,7 +28,9 @@ ST7789::ST7789(
     bl_port_(bl_port),
     bl_pin_(bl_pin),
     current_buffer_(FRAME_BUFFER_0),
-    is_transmitting_(false) {}
+    is_transmitting_(false),
+    dma_chunk_count_(0),
+    dma_next_ptr_(nullptr) {}
 
 void ST7789::spi_set_datasize(uint16_t datasize) {
     hspi_->Init.DataSize = datasize;
@@ -184,6 +186,63 @@ void ST7789::fill_screen(uint16_t color) {
     spi_set_datasize(SPI_DATASIZE_8BIT);
 }
 
+// ========== DMA版本 ==========
+void ST7789::fill_screen_dma(uint16_t color) {
+    while (is_transmitting_) {
+        HAL_Delay(1);
+    }
+    
+    uint16_t* fill_buffer = (current_buffer_ == FRAME_BUFFER_0) ? FRAME_BUFFER_1 : FRAME_BUFFER_0;
+    
+    // 填充缓冲区
+    uint32_t color32 = (color << 16) | color;
+    uint32_t* ptr32 = (uint32_t*)fill_buffer;
+    for (uint32_t i = 0; i < PIXEL_COUNT / 2; i++) {
+        ptr32[i] = color32;
+    }
+    
+    // 清除D-Cache
+    SCB_CleanDCache_by_Addr((uint32_t*)fill_buffer, PIXEL_COUNT * 2);
+    
+    // 设置地址窗口
+    set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
+    LCD_DC_Data;
+    HAL_Delay(1);
+    
+    // 切换到16位模式
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    is_transmitting_ = true;
+    dma_chunk_count_ = 0;
+    
+    // 分成两个chunk传输
+    // 总共67200个像素 = 67200个halfword
+    // 每个chunk传输33600个halfword
+    uint16_t* ptr = fill_buffer;
+    uint32_t chunk_size = 33600;  // 半帧的halfword数量
+    dma_next_ptr_ = ptr + chunk_size;
+    
+    // 启动第一个chunk的DMA传输
+    HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)ptr, chunk_size);
+}
+
+// DMA完成回调
+void ST7789::dma_tx_cplt_callback() {
+    if (dma_chunk_count_ == 0) {
+        // 第一个chunk完成，启动第二个
+        dma_chunk_count_++;
+        HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)dma_next_ptr_, 33600);
+    } else {
+        // 全部完成
+        dma_chunk_count_ = 0;
+        is_transmitting_ = false;
+        current_buffer_ = (current_buffer_ == FRAME_BUFFER_0) ? FRAME_BUFFER_1 : FRAME_BUFFER_0;
+        
+        // 切回8位模式
+        spi_set_datasize(SPI_DATASIZE_8BIT);
+    }
+}
+
 void ST7789::display_test_colors() {
     fill_screen(0xF800);  // 红
     HAL_Delay(800);
@@ -220,6 +279,9 @@ uint16_t ST7789::blend_color(uint16_t color1, uint16_t color2, uint8_t ratio) {
 
 // ========== 颜色循环动画（无限循环）==========
 void ST7789::color_cycle_loop() {
+    // ⭐ 选择传输模式：true=DMA，false=轮询
+    const bool use_dma = true;  // 启用DMA测试
+    
     // 使用更高精度的色调值（0-3600，即0.1度精度）
     uint32_t hue_x10 = 0;  // 色调 × 10
     uint32_t frame_count = 0;
@@ -252,7 +314,13 @@ void ST7789::color_cycle_loop() {
         
         // 转换为RGB565并填充整个屏幕
         uint16_t color = rgb_to_rgb565(r, g, b);
-        fill_screen(color);
+        
+        // ⭐ 根据配置选择传输模式
+        if (use_dma) {
+            fill_screen_dma(color);
+        } else {
+            fill_screen(color);
+        }
         
         uint32_t frame_end = HAL_GetTick();
         uint32_t frame_time = frame_end - frame_start;
