@@ -1,9 +1,9 @@
-/// @file main.cpp
-#include "main.hpp"
+/// @brief entry point for application
+#include "main.h"
 #include <memory>
 #include <stdio.h>
 #include "gpio.h"
-#include "dma.h"  // ⭐ 添加DMA头文件
+#include "dma.h"
 #include "fmc.h"
 #include "usart.h"
 #include "tim.h"
@@ -13,7 +13,6 @@
 #include "test.hpp"
 #include "led.hpp"
 #include "uart.hpp"
-#include "system_setup.hpp"
 #include "ST7789.hpp"
 #include "clock_app.hpp"
 
@@ -29,7 +28,7 @@ ST7789* g_lcd_ptr = nullptr;
 /// @brief  application entry point
 /// @retval int type 0 reprentes success
 int main(void) {
-    MPU_Config();
+    call_mpu_config();
     SCB_EnableICache();
     SCB_EnableDCache();
     HAL_Init();

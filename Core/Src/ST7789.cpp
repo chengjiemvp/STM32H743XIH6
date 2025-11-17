@@ -7,6 +7,17 @@
 #define TFT_H 280
 #define PIXEL_COUNT (TFT_W * TFT_H)
 
+// 高帧率模式：使用140行高度，单chunk传输
+#define HIGH_FPS_MODE 1  // 设为1启用100+ FPS模式
+#if HIGH_FPS_MODE
+    #define RENDER_H 140  // 使用140行（33600像素，单chunk）
+    #define RENDER_Y_OFFSET 70  // 居中显示（280-140）/2
+#else
+    #define RENDER_H TFT_H
+    #define RENDER_Y_OFFSET 0
+#endif
+#define RENDER_PIXELS (TFT_W * RENDER_H)
+
 // SDRAM 中的双缓冲
 #define FRAME_BUFFER_0 ((uint16_t*)0xC0000000)           // 帧缓冲 A
 #define FRAME_BUFFER_1 ((uint16_t*)(0xC0000000 + (PIXEL_COUNT * 2)))  // 帧缓冲 B
@@ -29,6 +40,7 @@ ST7789::ST7789(
     bl_pin_(bl_pin),
     current_buffer_(FRAME_BUFFER_0),
     is_transmitting_(false),
+    dropped_frames_(0),
     dma_chunk_count_(0),
     dma_next_ptr_(nullptr) {}
 
@@ -261,39 +273,36 @@ void ST7789::fill_screen_dma(uint16_t color) {
     
     is_transmitting_ = true;
     dma_chunk_count_ = 0;
+    dma_next_ptr_ = fill_buffer;
     
-    // 分成两个chunk传输
-    // 总共67200个像素 = 67200个halfword
-    // 每个chunk传输33600个halfword
-    uint16_t* ptr = fill_buffer;
-    uint32_t chunk_size = 33600;  // 半帧的halfword数量
-    dma_next_ptr_ = ptr + chunk_size;
-    
-    // 启动第一个chunk的DMA传输
-    HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)ptr, chunk_size);
+    // 分成2个chunk传输：33600 + 33600 = 67200 halfwords (134400字节)
+    // 注意：16位模式下Size参数是halfword数量，不是字节数！
+    HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)fill_buffer, 33600);
 }
 
 // DMA完成回调
 void ST7789::dma_tx_cplt_callback() {
-    if (dma_chunk_count_ == 0) {
-        // 第一个chunk完成，启动第二个
-        dma_chunk_count_++;
-        HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)dma_next_ptr_, 33600);
+    dma_chunk_count_++;
+    
+    // 检查是否还有更多chunk
+    if (dma_chunk_count_ < dma_total_chunks_) {
+        // 传输下一个chunk（33600 halfwords）
+        uint16_t* next_ptr = dma_next_ptr_ + (dma_chunk_count_ * 33600);
+        HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)next_ptr, 33600);
     } else {
-        // 全部完成
-        dma_chunk_count_ = 0;
+        // 所有chunk完成
         is_transmitting_ = false;
         current_buffer_ = (current_buffer_ == FRAME_BUFFER_0) ? FRAME_BUFFER_1 : FRAME_BUFFER_0;
-        
-        // 切回8位模式
         spi_set_datasize(SPI_DATASIZE_8BIT);
     }
 }
 
 // ========== DMA传输外部framebuffer ==========
 void ST7789::transmit_buffer_dma(uint16_t* buffer) {
-    while (is_transmitting_) {
-        HAL_Delay(1);
+    // 如果DMA还在传输，直接返回（跳过这一帧，保持流畅性）
+    if (is_transmitting_) {
+        dropped_frames_++;  // 记录跳帧
+        return;  // 不阻塞，让CPU继续工作
     }
     
     // 清除D-Cache
@@ -302,21 +311,120 @@ void ST7789::transmit_buffer_dma(uint16_t* buffer) {
     // 设置地址窗口
     set_addr_window(0, 0, TFT_W - 1, TFT_H - 1);
     LCD_DC_Data;
-    HAL_Delay(1);
     
     // 切换到16位模式
     spi_set_datasize(SPI_DATASIZE_16BIT);
     
     is_transmitting_ = true;
     dma_chunk_count_ = 0;
+    dma_total_chunks_ = 2;  // 全屏传输2个chunk
+    dma_next_ptr_ = buffer;
     
-    // 分成两个chunk传输
-    uint16_t* ptr = buffer;
-    uint32_t chunk_size = 33600;
-    dma_next_ptr_ = ptr + chunk_size;
+    // 分成2个chunk传输：33600 + 33600 = 67200 halfwords
+    // 16位模式下Size参数是halfword数量
+    HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)buffer, 33600);
+}
+
+// ========== DMA传输局部区域（仅支持全宽度区域以保证连续性）==========
+void ST7789::transmit_region_dma(uint16_t* buffer, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    // 如果DMA还在传输，跳帧
+    if (is_transmitting_) {
+        dropped_frames_++;
+        return;
+    }
     
-    // 启动第一个chunk的DMA传输
-    HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)ptr, chunk_size);
+    // 仅支持全宽度传输（x=0, w=240），以确保数据连续
+    if (x != 0 || w != TFT_W) {
+        return;  // 不支持的区域，静默失败
+    }
+    
+    // 清除D-Cache
+    uint32_t region_size = (uint32_t)w * h * 2;  // 字节数
+    SCB_CleanDCache_by_Addr((uint32_t*)(buffer + y * TFT_W), region_size);
+    
+    // 设置地址窗口为局部区域
+    set_addr_window(0, y, TFT_W - 1, y + h - 1);
+    LCD_DC_Data;
+    
+    // 切换到16位模式
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    is_transmitting_ = true;
+    dma_chunk_count_ = 0;
+    dma_next_ptr_ = buffer + (y * TFT_W);  // 起始行地址
+    
+    uint32_t total_pixels = (uint32_t)w * h;
+    
+    // 如果小于等于33600像素，单次传输
+    if (total_pixels <= 33600) {
+        dma_total_chunks_ = 1;  // 单chunk模式
+        HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)dma_next_ptr_, total_pixels);
+    } else {
+        // 分2个chunk传输
+        dma_total_chunks_ = 2;
+        HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)dma_next_ptr_, 33600);
+    }
+}
+
+// ========== 高帧率单chunk传输（240×140，居中显示）==========
+void ST7789::transmit_high_fps_dma(uint16_t* buffer) {
+    // 如果DMA还在传输，跳帧
+    if (is_transmitting_) {
+        dropped_frames_++;
+        return;
+    }
+    
+    // 清除D-Cache（只清理实际渲染的140行）
+    SCB_CleanDCache_by_Addr((uint32_t*)buffer, 33600 * 2);
+    
+    // 设置地址窗口为居中的240×140区域
+    // Y偏移70像素，居中显示在280高度的屏幕上
+    set_addr_window(0, 70, TFT_W - 1, 70 + 140 - 1);
+    LCD_DC_Data;
+    
+    // 切换到16位模式
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    is_transmitting_ = true;
+    dma_chunk_count_ = 0;
+    dma_total_chunks_ = 1;  // 单chunk模式！
+    dma_next_ptr_ = buffer;
+    
+    // 单次传输33600像素（240×140）
+    HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)buffer, 33600);
+}
+
+// ========== 单chunk传输指定行数（最大273行 = 65520像素）==========
+void ST7789::transmit_single_chunk_dma(uint16_t* buffer, uint16_t rows) {
+    // 如果DMA还在传输，跳帧
+    if (is_transmitting_) {
+        dropped_frames_++;
+        return;
+    }
+    
+    // 限制行数，确保不超过uint16_t限制
+    if (rows > 273) rows = 273;  // 240×273 = 65520像素
+    
+    uint32_t total_pixels = (uint32_t)TFT_W * rows;
+    
+    // 清除D-Cache
+    SCB_CleanDCache_by_Addr((uint32_t*)buffer, total_pixels * 2);
+    
+    // 设置地址窗口
+    uint16_t y_offset = (TFT_H - rows) / 2;  // 居中显示
+    set_addr_window(0, y_offset, TFT_W - 1, y_offset + rows - 1);
+    LCD_DC_Data;
+    
+    // 切换到16位模式
+    spi_set_datasize(SPI_DATASIZE_16BIT);
+    
+    is_transmitting_ = true;
+    dma_chunk_count_ = 0;
+    dma_total_chunks_ = 1;  // 单chunk模式
+    dma_next_ptr_ = buffer;
+    
+    // 单次传输
+    HAL_SPI_Transmit_DMA(hspi_, (uint8_t*)buffer, total_pixels);
 }
 
 void ST7789::display_test_colors() {

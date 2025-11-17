@@ -42,12 +42,11 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    Core/Src/main.cpp
+    Core/Src/app.cpp
     Core/Src/led.cpp
     Core/Src/bsp_sdram.cpp
     Core/Src/test.cpp
     Core/Src/uart.cpp
-    Core/Src/system_setup.cpp
     Core/Src/app_callbacks.cpp
     Core/Src/ST7789.cpp
     Core/Src/clock_app.cpp

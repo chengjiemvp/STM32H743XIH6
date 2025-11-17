@@ -1,5 +1,5 @@
 #pragma once
-#include "main.hpp"
+#include "main.h"
 #include <cstdint>
 
 namespace test {

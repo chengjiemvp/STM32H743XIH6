@@ -16,10 +16,10 @@ public:
     
 private:
     static constexpr uint16_t WIDTH = 240;
-    static constexpr uint16_t HEIGHT = 280;
+    static constexpr uint16_t HEIGHT = 270;  // 270行：64800像素，避开圆角区域
     static constexpr uint16_t CENTER_X = 120;
-    static constexpr uint16_t CENTER_Y = 140;
-    static constexpr uint16_t RADIUS = 100;
+    static constexpr uint16_t CENTER_Y = 135;  // 居中于270行
+    static constexpr uint16_t RADIUS = 95;   // 适应273行
     
     // 双缓冲区（在SDRAM中）
     uint16_t* buffer_[2];

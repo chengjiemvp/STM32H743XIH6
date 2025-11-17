@@ -1,5 +1,5 @@
 #include <memory>
-#include "main.hpp"
+#include "main.h"
 #include "uart.hpp"
 #include "led.hpp"
 #include "ST7789.hpp"

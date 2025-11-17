@@ -386,26 +386,26 @@ void ClockApp::draw_pointers_only(uint16_t* fb) {
             }
         }
     }
-    uint32_t ptr_end = DWT->CYCCNT;
-    uint32_t ptr_cycles = ptr_end - ptr_start;
+    // uint32_t ptr_end = DWT->CYCCNT;
+    // uint32_t ptr_cycles = ptr_end - ptr_start;
     
     // 5. 中心装饰（玫瑰金+珍珠白）
-    uint32_t circle_start = DWT->CYCCNT;
+    // uint32_t circle_start = DWT->CYCCNT;
     fill_circle(fb, CENTER_X, CENTER_Y, 5, ST7789::rgb_to_rgb565(220, 150, 130));
     fill_circle(fb, CENTER_X, CENTER_Y, 3, ST7789::rgb_to_rgb565(240, 235, 230));
-    uint32_t circle_end = DWT->CYCCNT;
-    uint32_t circle_cycles = circle_end - circle_start;
+    // uint32_t circle_end = DWT->CYCCNT;
+    // uint32_t circle_cycles = circle_end - circle_start;
     
     // 每100帧打印一次性能分析
-    static uint32_t frame_count = 0;
-    if (++frame_count >= 100) {
-        printf("[PERF] Copy: %u us | Pointers: %u us | Circles: %u us | Total: %u us\r\n",
-               (unsigned int)(copy_cycles / 480),
-               (unsigned int)(ptr_cycles / 480),
-               (unsigned int)(circle_cycles / 480),
-               (unsigned int)((copy_cycles + ptr_cycles + circle_cycles) / 480));
-        frame_count = 0;
-    }
+    // static uint32_t frame_count = 0;
+    // if (++frame_count >= 100) {
+    //     printf("[ERF] Copy: %u us | Pointers: %u us | Circles: %u us | Total: %u us\r\n",
+    //            (unsigned int)(copy_cycles / 480),
+    //            (unsigned int)(ptr_cycles / 480),
+    //            (unsigned int)(circle_cycles / 480),
+    //            (unsigned int)((copy_cycles + ptr_cycles + circle_cycles) / 480));
+    //     frame_count = 0;
+    // }
 }
 
 void ClockApp::draw_to_buffer(uint16_t* fb) {
@@ -427,10 +427,10 @@ void ClockApp::run() {
     // **预渲染静态表盘（只执行一次）**
     render_static_dial();
     
-    // 初始显示
+    // 初始显示（使用单chunk传输270行）
     uint16_t* back_buffer = buffer_[current_buffer_idx_];
     draw_pointers_only(back_buffer);  // 使用优化版本
-    lcd_->fill_screen_dma(ST7789::rgb_to_rgb565(15, 25, 45));
+    lcd_->transmit_single_chunk_dma(back_buffer, 270);  // 270行避开圆角
     HAL_Delay(100);
     
     uint32_t last_draw = HAL_GetTick();
@@ -447,8 +447,8 @@ void ClockApp::run() {
             last_update_tick_ = now;
         }
         
-        // 每10ms更新一次显示（100 FPS）
-        if (now - last_draw >= 10) {
+        // 每18ms更新一次显示（55 FPS，273行单chunk最大配置）
+        if (now - last_draw >= 18) {  // 1000ms/55 ≈ 18ms
             last_draw = now;
             
             // ===== 开始测量CPU时间 =====
@@ -458,8 +458,8 @@ void ClockApp::run() {
             back_buffer = buffer_[current_buffer_idx_];
             draw_pointers_only(back_buffer);  // ⭐ 使用优化版本
             
-            // 使用DMA传输framebuffer（异步）
-            lcd_->transmit_buffer_dma(back_buffer);
+            // 使用单chunk传输270行（64800像素，避开圆角）
+            lcd_->transmit_single_chunk_dma(back_buffer, 270);
             
             // ===== 结束测量 =====
             uint32_t work_end = DWT->CYCCNT;
@@ -476,7 +476,7 @@ void ClockApp::run() {
             uint32_t period_ms = now - last_cpu_calc_tick_;
             
             // 计算这段时间内实际执行的帧数
-            uint32_t frame_count = period_ms / 10; // 理论帧数（每10ms一帧）
+            uint32_t frame_count = period_ms / 18; // 理论帧数（每18ms一帧，55 FPS）
             uint32_t avg_frame_us = frame_count > 0 ? (busy_time_us_ / frame_count) : 0;
             
             // CPU占用率 = (总忙碌微秒 / 周期微秒) * 100
@@ -486,17 +486,19 @@ void ClockApp::run() {
             // 为了小数点后1位精度，分子先乘10：
             uint32_t cpu_percent_x10 = (busy_time_us_ * 10) / (period_ms * 10);
             
-            // 额外显示：总忙碌时间（毫秒）
-            uint32_t busy_time_ms = busy_time_us_ / 1000;
+            // 获取跳帧数
+            uint32_t dropped = lcd_->get_dropped_frames();
             
-            printf("[WAT] %5u.%03u s | CPU: %2u.%u%% | Draw: %5u us/frame (%u frames) | Busy: %u ms\r\n", 
+            printf("[WAT] %5u.%03u s | CPU: %2u.%u%% | Draw: %5u us/frame (%u frames) | Dropped: %u\r\n", 
                    (unsigned int)(elapsed_ms_ / 1000), 
                    (unsigned int)(elapsed_ms_ % 1000),
                    (unsigned int)(cpu_percent_x10 / 10),
                    (unsigned int)(cpu_percent_x10 % 10),
                    (unsigned int)avg_frame_us,
                    (unsigned int)frame_count,
-                   (unsigned int)busy_time_ms);
+                   (unsigned int)dropped);
+            
+            lcd_->reset_dropped_frames();  // 重置跳帧计数
             
             last_cpu_calc_tick_ = now;
             busy_time_us_ = 0;

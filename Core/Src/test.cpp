@@ -1,5 +1,5 @@
 #include <memory>
-#include "main.hpp"
+#include "main.h"
 #include "test.hpp"
 #include "led.hpp"
 #include "inttypes.h" // for HAL_RCC_GetSysClockFreq print, UNSIGNED LONG
